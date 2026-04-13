@@ -1,11 +1,11 @@
-#include "header.h"
+/* score.c — corrected */
 #include "integrated.h"
-#include "enigme.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 #define FRAME_DELAY 100
+#define VISIBLE_SCORES 5   /* how many top scores to show */
 
 /* ================= HOVER ================= */
 static int isHovered(int mx, int my, SDL_Rect r)
@@ -19,49 +19,67 @@ void initScoreMenu(ScoreMenu *menu, SDL_Renderer *renderer)
 {
     memset(menu, 0, sizeof(ScoreMenu));
 
-    menu->background_frames[0] = loadTexture("assets/back/score1.jpg", renderer);
-    menu->background_frames[1] = loadTexture("assets/back/score2.jpg", renderer);
+    /* Load background frames and track how many loaded successfully */
+    const char *frame_paths[] = {
+        "assets/back/score1.jpg",
+        "assets/back/score2.jpg"
+    };
+    menu->frame_count = 0;
+    for (int i = 0; i < (int)(sizeof(frame_paths)/sizeof(frame_paths[0])); i++) {
+        SDL_Texture *t = loadTexture(frame_paths[i], renderer);
+        if (t) menu->background_frames[menu->frame_count++] = t;
+    }
 
-    menu->button_validate_texture = loadTexture("assets/button/valider.png", renderer);
-    menu->button_return_texture   = loadTexture("assets/button/retour.png", renderer);
+    /* Normal button textures */
+    menu->button_validate_texture = loadTexture("assets/button/valider.png",    renderer);
+    menu->button_return_texture   = loadTexture("assets/button/retour.png",     renderer);
     menu->button_quit_texture     = loadTexture("assets/image/bouton quitter 1.png", renderer);
 
+    /* Hover button textures — all four loaded consistently */
     menu->button_validate_hover_texture = loadTexture("assets/button/valider_hover.png", renderer);
+    menu->button_return_hover_texture   = loadTexture("assets/button/retour_hover.png",  renderer);
+    menu->button_quit_hover_texture     = loadTexture("assets/image/bouton quitter 1_hover.png", renderer);
 
-    
-    menu->pos_button_validate = (SDL_Rect){515, 370, 250, 70};
-    menu->pos_button_return   = (SDL_Rect){160, 590, 200, 65};
-    menu->pos_button_quit     = (SDL_Rect){920, 590, 200, 65};
-
-    menu->zone_input = (SDL_Rect){310, 300, 660, 55};
+    /* Layout (window 1280x800):
+       Title       ~ y=180
+       Subtitle    ~ y=260
+       Input bar   ~ y=350  (below subtitle, clear gap)
+       Validate    ~ y=450  (below input bar)
+       Return/Quit ~ y=650  (bottom of screen, side by side)
+    */
+    menu->zone_input          = (SDL_Rect){310,  420, 660,  55};
+    menu->pos_button_validate = (SDL_Rect){515,  530, 250,  70};
+    menu->pos_button_return   = (SDL_Rect){200,  680, 200,  65};
+    menu->pos_button_quit     = (SDL_Rect){880,  680, 200,  65};
 
     strcpy(menu->player_name, "");
 
-    menu->font = TTF_OpenFont("assets/font/font.ttf", 20);
-    menu->textColor = (SDL_Color){255,255,255,255};
+    menu->font      = TTF_OpenFont("assets/font/font.ttf", 20);
+    menu->textColor = (SDL_Color){255, 255, 255, 255};
 
-    menu->click_sound = Mix_LoadWAV("assets/audio/click.wav");
+    menu->click_sound      = Mix_LoadWAV("assets/audio/click.wav");
     menu->validation_music = Mix_LoadMUS("assets/audio/sound.mp3");
 }
 
 /* ================= CLEAN ================= */
 void cleanupScoreMenu(ScoreMenu *menu)
 {
-    for (int i = 0; i < MAX_FRAMES; i++)
+    /* Only destroy textures that were actually loaded */
+    for (int i = 0; i < menu->frame_count; i++)
         if (menu->background_frames[i])
             SDL_DestroyTexture(menu->background_frames[i]);
 
-    SDL_DestroyTexture(menu->button_validate_texture);
-    SDL_DestroyTexture(menu->button_validate_hover_texture);
-    SDL_DestroyTexture(menu->button_return_texture);
-    SDL_DestroyTexture(menu->button_return_hover_texture);
-    SDL_DestroyTexture(menu->button_quit_texture);
-    SDL_DestroyTexture(menu->button_quit_hover_texture);
+    if (menu->button_validate_texture)       SDL_DestroyTexture(menu->button_validate_texture);
+    if (menu->button_validate_hover_texture) SDL_DestroyTexture(menu->button_validate_hover_texture);
+    if (menu->button_return_texture)         SDL_DestroyTexture(menu->button_return_texture);
+    if (menu->button_return_hover_texture)   SDL_DestroyTexture(menu->button_return_hover_texture);
+    if (menu->button_quit_texture)           SDL_DestroyTexture(menu->button_quit_texture);
+    if (menu->button_quit_hover_texture)     SDL_DestroyTexture(menu->button_quit_hover_texture);
 
     if (menu->font) TTF_CloseFont(menu->font);
 
-    Mix_FreeChunk(menu->click_sound);
-    Mix_FreeMusic(menu->validation_music);
+    if (menu->click_sound)      Mix_FreeChunk(menu->click_sound);
+    if (menu->validation_music) Mix_FreeMusic(menu->validation_music);
 }
 
 /* ================= SAVE ================= */
@@ -77,6 +95,8 @@ void saveScore(const char *player_name, int score)
 /* ================= DISPLAY SCORES ================= */
 void displayScores(SDL_Renderer *renderer, ScoreMenu *menu)
 {
+    if (!menu->font) return;
+
     PlayerScore scores[MAX_SCORES];
     int count = 0;
 
@@ -88,7 +108,7 @@ void displayScores(SDL_Renderer *renderer, ScoreMenu *menu)
         fclose(f);
     }
 
-    /* sort */
+    /* Bubble sort descending by score */
     for (int i = 0; i < count - 1; i++)
         for (int j = i + 1; j < count; j++)
             if (scores[j].score > scores[i].score) {
@@ -97,14 +117,19 @@ void displayScores(SDL_Renderer *renderer, ScoreMenu *menu)
                 scores[j] = tmp;
             }
 
-    for (int i = 0; i < count && i < 3; i++) {
-        char line[100];
-        snprintf(line, sizeof(line), "#%d %.50s %d",
-         i+1, scores[i].name, scores[i].score);
-        SDL_Surface *s = TTF_RenderText_Blended(menu->font, line, menu->textColor);
-        SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
+    /* Show up to VISIBLE_SCORES entries, not just 3 */
+    int display_count = (count < VISIBLE_SCORES) ? count : VISIBLE_SCORES;
+    for (int i = 0; i < display_count; i++) {
+        char line[128];
+        snprintf(line, sizeof(line), "#%d  %-30.30s  %d",
+                 i + 1, scores[i].name, scores[i].score);
 
-        SDL_Rect r = {200, 260 + i * 80, s->w, s->h};
+        SDL_Surface *s = TTF_RenderText_Blended(menu->font, line, menu->textColor);
+        if (!s) continue;
+        SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
+        if (!t) { SDL_FreeSurface(s); continue; }
+
+        SDL_Rect r = {310, 300 + i * 60, s->w, s->h};
         SDL_RenderCopy(renderer, t, NULL, &r);
 
         SDL_FreeSurface(s);
@@ -116,53 +141,72 @@ void displayScores(SDL_Renderer *renderer, ScoreMenu *menu)
 void display(SDL_Renderer *renderer, ScoreMenu *menu,
              ScoreMenuState state, int score)
 {
-    (void)score;
     SDL_RenderClear(renderer);
 
+    /* Pick background frame: frame 0 for input, frame 1 for scores */
     int bg = (state == MENU_INPUT) ? 0 : 1;
-    if (menu->background_frames[bg])
+    if (bg < menu->frame_count && menu->background_frames[bg])
         SDL_RenderCopy(renderer, menu->background_frames[bg], NULL, NULL);
 
-    /* ===== INPUT ===== */
+    /* ===== INPUT STATE ===== */
     if (state == MENU_INPUT) {
 
-        if (strlen(menu->player_name) > 0) {
-            SDL_Surface *s = TTF_RenderText_Blended(menu->font,
-                                menu->player_name, menu->textColor);
-            SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
-
-            SDL_Rect r = {menu->zone_input.x + 10,
-                          menu->zone_input.y + 10,
-                          s->w, s->h};
-
-            SDL_RenderCopy(renderer, t, NULL, &r);
-
-            SDL_FreeSurface(s);
-            SDL_DestroyTexture(t);
+        /* Show the current score so the player knows what they're saving */
+        if (menu->font) {
+            char score_line[64];
+            snprintf(score_line, sizeof(score_line), "Score: %d", score);
+            SDL_Surface *ss = TTF_RenderText_Blended(menu->font, score_line, menu->textColor);
+            if (ss) {
+                SDL_Texture *st = SDL_CreateTextureFromSurface(renderer, ss);
+                if (st) {
+                    SDL_Rect sr = {menu->zone_input.x, menu->zone_input.y - 50,
+                                   ss->w, ss->h};
+                    SDL_RenderCopy(renderer, st, NULL, &sr);
+                    SDL_DestroyTexture(st);
+                }
+                SDL_FreeSurface(ss);
+            }
         }
 
-        SDL_Texture *vTex = menu->hovered_validate ?
-            menu->button_validate_hover_texture :
-            menu->button_validate_texture;
+        /* Typed player name */
+        if (menu->font && strlen(menu->player_name) > 0) {
+            SDL_Surface *s = TTF_RenderText_Blended(menu->font,
+                                menu->player_name, menu->textColor);
+            if (s) {
+                SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
+                if (t) {
+                    SDL_Rect r = {menu->zone_input.x + 10,
+                                  menu->zone_input.y + 10,
+                                  s->w, s->h};
+                    SDL_RenderCopy(renderer, t, NULL, &r);
+                    SDL_DestroyTexture(t);
+                }
+                SDL_FreeSurface(s);
+            }
+        }
 
-        SDL_RenderCopy(renderer, vTex, NULL, &menu->pos_button_validate);
+        /* Validate button (with hover) */
+        SDL_Texture *vTex = (menu->hovered_validate && menu->button_validate_hover_texture)
+                            ? menu->button_validate_hover_texture
+                            : menu->button_validate_texture;
+        if (vTex)
+            SDL_RenderCopy(renderer, vTex, NULL, &menu->pos_button_validate);
     }
 
-    /* ===== SCORES ===== */
+    /* ===== SCORES STATE ===== */
     else if (state == MENU_SCORES_DISPLAY) {
 
         displayScores(renderer, menu);
 
-        SDL_Texture *rTex = menu->hovered_return ?
-            menu->button_return_hover_texture :
-            menu->button_return_texture;
+        SDL_Texture *rTex = (menu->hovered_return && menu->button_return_hover_texture)
+                            ? menu->button_return_hover_texture
+                            : menu->button_return_texture;
+        SDL_Texture *qTex = (menu->hovered_quit && menu->button_quit_hover_texture)
+                            ? menu->button_quit_hover_texture
+                            : menu->button_quit_texture;
 
-        SDL_Texture *qTex = menu->hovered_quit ?
-            menu->button_quit_hover_texture :
-            menu->button_quit_texture;
-
-        SDL_RenderCopy(renderer, rTex, NULL, &menu->pos_button_return);
-        SDL_RenderCopy(renderer, qTex, NULL, &menu->pos_button_quit);
+        if (rTex) SDL_RenderCopy(renderer, rTex, NULL, &menu->pos_button_return);
+        if (qTex) SDL_RenderCopy(renderer, qTex, NULL, &menu->pos_button_quit);
     }
 
     SDL_RenderPresent(renderer);
@@ -176,52 +220,50 @@ void handleEvents(SDL_Event event, ScoreMenu *menu, ScoreMenuState *state,
 
     if (event.type == SDL_MOUSEMOTION) {
         int mx = event.motion.x, my = event.motion.y;
-        menu->hovered_validate = isHovered(mx,my,menu->pos_button_validate);
-        menu->hovered_return   = isHovered(mx,my,menu->pos_button_return);
-        menu->hovered_quit     = isHovered(mx,my,menu->pos_button_quit);
+        menu->hovered_validate = isHovered(mx, my, menu->pos_button_validate);
+        menu->hovered_return   = isHovered(mx, my, menu->pos_button_return);
+        menu->hovered_quit     = isHovered(mx, my, menu->pos_button_quit);
     }
 
-    if (event.type == SDL_MOUSEBUTTONDOWN) {
+    if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
         int mx = event.button.x, my = event.button.y;
 
-        if (*state == MENU_INPUT &&
-            isHovered(mx,my,menu->pos_button_validate)) {
-
-            saveScore(menu->player_name, score);
-            *state = MENU_SCORES_DISPLAY;
+        if (*state == MENU_INPUT) {
+            if (isHovered(mx, my, menu->pos_button_validate)) {
+                if (menu->click_sound) Mix_PlayChannel(-1, menu->click_sound, 0);
+                saveScore(menu->player_name, score);
+                *state = MENU_SCORES_DISPLAY;
+            }
         }
         else if (*state == MENU_SCORES_DISPLAY) {
-
-            if (isHovered(mx,my,menu->pos_button_return)) {
+            if (isHovered(mx, my, menu->pos_button_return)) {
+                if (menu->click_sound) Mix_PlayChannel(-1, menu->click_sound, 0);
                 *go_main_menu = 1;
                 *quit = 1;
             }
-            if (isHovered(mx,my,menu->pos_button_quit)) {
+            if (isHovered(mx, my, menu->pos_button_quit)) {
+                if (menu->click_sound) Mix_PlayChannel(-1, menu->click_sound, 0);
                 *quit = 1;
             }
         }
     }
 
-    /* FIX TEXT */
     if (event.type == SDL_TEXTINPUT && *state == MENU_INPUT) {
         if (strlen(menu->player_name) < MAX_NAME - 1) {
-            strcat(menu->player_name, event.text.text);
+            strncat(menu->player_name, event.text.text,
+                    MAX_NAME - 1 - strlen(menu->player_name));
         }
     }
 
     if (event.type == SDL_KEYDOWN) {
-
         if (event.key.keysym.sym == SDLK_BACKSPACE &&
             strlen(menu->player_name) > 0) {
-            menu->player_name[strlen(menu->player_name)-1] = '\0';
+            menu->player_name[strlen(menu->player_name) - 1] = '\0';
         }
-
-        if (event.key.keysym.sym == SDLK_RETURN &&
-            *state == MENU_INPUT) {
+        if (event.key.keysym.sym == SDLK_RETURN && *state == MENU_INPUT) {
             saveScore(menu->player_name, score);
             *state = MENU_SCORES_DISPLAY;
         }
-
         if (event.key.keysym.sym == SDLK_ESCAPE)
             *quit = 1;
     }
@@ -235,7 +277,9 @@ int scoreMenuLoop(SDL_Window *window, SDL_Renderer *renderer, int final_score)
 {
     (void)window;
 
-    Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048);
+    /* Open audio only if not already open */
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
+        printf("Mix_OpenAudio warning: %s\n", Mix_GetError());
 
     ScoreMenu menu;
     initScoreMenu(&menu, renderer);

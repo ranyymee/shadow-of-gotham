@@ -9,9 +9,6 @@
 #define MAX_NAME    100
 #define MAX_FRAMES  50
 
-/* ==================== ENIGME (forward) ==================== */
-/* enigme.h est inclus dans les .c qui en ont besoin */
-
 /* ==================== ÉTATS DU SCORE MENU ==================== */
 typedef enum {
     MENU_INPUT,
@@ -28,7 +25,7 @@ typedef struct {
 /* ==================== STRUCTURE SCORE MENU ==================== */
 typedef struct {
     SDL_Texture *background_frames[MAX_FRAMES];
-    int          frame_count;
+    int          frame_count;        /* number of frames actually loaded */
     int          current_frame;
     int          frame_direction;
     Uint32       last_frame_time;
@@ -39,8 +36,8 @@ typedef struct {
     SDL_Texture *button_enigme_texture;
 
     SDL_Texture *button_validate_hover_texture;
-    SDL_Texture *button_return_hover_texture;
-    SDL_Texture *button_quit_hover_texture;
+    SDL_Texture *button_return_hover_texture;   /* was missing in original */
+    SDL_Texture *button_quit_hover_texture;     /* was missing in original */
     SDL_Texture *button_enigme_hover_texture;
 
     SDL_Rect pos_button_validate;
@@ -62,9 +59,9 @@ typedef struct {
     int hovered_return;
     int hovered_enigme;
 
-    SDL_Texture *overlay;  /* gardé pour compatibilité */
-    SDL_Texture *panel;    /* zina.jpg — panel gris arrondi */
-    SDL_Texture *label;    /* label.png — barre saisie nom */
+    SDL_Texture *overlay;
+    SDL_Texture *panel;
+    SDL_Texture *label;
 } ScoreMenu;
 
 /* ==================== PROTOTYPES SCORE MENU ==================== */
@@ -77,7 +74,6 @@ void display         (SDL_Renderer *renderer, ScoreMenu *menu, ScoreMenuState st
 int  scoreMenuLoop   (SDL_Window *window, SDL_Renderer *renderer, int final_score);
 
 /* ==================== UTILITAIRE ==================== */
-/* loadTexture est publique, définie dans enigme.c */
 SDL_Texture *loadTexture(const char *path, SDL_Renderer *renderer);
 
 #endif /* INTEGRATED_H */
