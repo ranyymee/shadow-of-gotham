@@ -59,7 +59,7 @@ typedef struct {
 void initBackgroundAndPlatforms(SDL_Renderer *renderer, Background *bg, Platform platforms[], int *taille, int level, int screenW, int screenH);
 void afficherPlatforms(SDL_Renderer *renderer, Platform platforms[], int taille, int bgX, int bgY);
 void updatePlatforms(Platform platforms[], int taille);
-void gererScrollingDeuxJoueurs(SDL_Event event, Background *bg1, Background *bg2, int scrollSpeed);
+void gererScrollingDeuxJoueurs(SDL_Event event, Background *bg1, Background *bg2, int scrollSpeed, int level);
 void gererTemps(int *timeLeft, Uint32 *lastTime);
 void afficherTemps(SDL_Renderer *renderer, TTF_Font *font, int timeLeft, int screenW);
 void gererGuideEtClic(SDL_Event event, GuideButton *guide, SDL_TextureWithRect *commentJouer, int *afficherCommentJouer);
