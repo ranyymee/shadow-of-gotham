@@ -3,97 +3,46 @@
 #include <stdio.h>
 #include <string.h>
 
-/* ── Charger une texture depuis un fichier image ── */
-static char s_basePath[512] = {0};
-
-static void initBasePath(void)
-{
-    if (s_basePath[0] == '\0') {
-        char *sdlBase = SDL_GetBasePath();
-        if (sdlBase) {
-            strncpy(s_basePath, sdlBase, sizeof(s_basePath) - 1);
-            SDL_free(sdlBase);
-        } else {
-            s_basePath[0] = '.';
-            s_basePath[1] = '/';
-            s_basePath[2] = '\0';
-        }
-    }
-}
-
-static SDL_Texture *chargerTexture(SDL_Renderer *renderer, const char *chemin)
-{
-    SDL_Surface *surface;
-    SDL_Texture *tex;
-    char fullPath[768];
-
-    initBasePath();
-    /* Essayer d'abord avec le chemin direct */
-    surface = IMG_Load(chemin);
-    if (!surface) {
-        /* Sinon essayer dans le dossier de l'executable */
-        snprintf(fullPath, sizeof(fullPath), "%s%s", s_basePath, chemin);
-        surface = IMG_Load(fullPath);
-    }
-    if (!surface) {
-        printf("Erreur image %s : %s\n", chemin, IMG_GetError());
-        return NULL;
-    }
-    tex = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_FreeSurface(surface);
-    return tex;
-}
-
-/* ── Creer une texture de couleur unie ── */
-static SDL_Texture *creerTextureCouleur(SDL_Renderer *renderer,
-                                         int w, int h,
-                                         Uint8 r, Uint8 g, Uint8 b)
-{
-    SDL_Surface *surf;
-    SDL_Texture *tex;
-    surf = SDL_CreateRGBSurface(0, w, h, 32,
-                                0xFF000000, 0x00FF0000,
-                                0x0000FF00, 0x000000FF);
-    if (!surf) return NULL;
-    SDL_FillRect(surf, NULL, SDL_MapRGB(surf->format, r, g, b));
-    tex = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_FreeSurface(surf);
-    return tex;
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   initBackgroundAndPlatforms
-════════════════════════════════════════════════════════════════════ */
 void initBackgroundAndPlatforms(SDL_Renderer *renderer, Background *bg,
                                  Platform platforms[], int *taille, int level,
                                  int screenW, int screenH)
 {
-    Platform *p;
-    int imgW = 0, imgH = 0;
+    SDL_Surface *surface;
+    int imgW, imgH;
+
+    imgW = 0;
+    imgH = 0;
+    (void)platforms;
 
     bg->posimg.x = 0;
     bg->posimg.y = 0;
-    /* Charger background.png — assez grande pour le scrolling */
-    bg->img[0] = chargerTexture(renderer, "back.png");
-    
-    if (!bg->img[0]) { printf("Erreur back.png\n"); exit(EXIT_FAILURE); }
+
+    if (level == 2)
+        surface = IMG_Load("l2.png");
+    else
+        surface = IMG_Load("back.png");
+
+    if (!surface) {
+        printf("Erreur chargement background level %d : %s\n", level, IMG_GetError());
+        exit(EXIT_FAILURE);
+    }
+    bg->img[0] = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+
     SDL_QueryTexture(bg->img[0], NULL, NULL, &imgW, &imgH);
-    /* Init camera — centree sur la facade du building (ground level visible) */
     bg->camera_pos.x = 0;
-    /* Sol = SY(63) = imgH - screenH + screenH*63/100
-       On veut que le sol soit visible en bas de l'ecran → camera_pos.y = SY(63) - screenH + marge
-       Simplifie: camera_pos.y = imgH - screenH (bas de l'image) si image assez grande,
-       sinon 0. Le SY(63) place le sol a 63% de screenH depuis le haut du viewport. */
     if (imgH > screenH)
         bg->camera_pos.y = imgH - screenH;
     else
         bg->camera_pos.y = 0;
     bg->camera_pos.w = screenW;
     bg->camera_pos.h = screenH;
-    bg->direction    = 0;
+    bg->direction = 0;
 
-    bg->guide.image = chargerTexture(renderer, "guide.png");
-    if (!bg->guide.image) { printf("Erreur guide.png\n"); exit(EXIT_FAILURE); }
+    surface = IMG_Load("guide.png");
+    if (!surface) { printf("Erreur guide.png\n"); exit(EXIT_FAILURE); }
+    bg->guide.image = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
     bg->guide.w = 55;
     bg->guide.h = 55;
     bg->guide.position.x = screenW - bg->guide.w - 10;
@@ -101,178 +50,17 @@ void initBackgroundAndPlatforms(SDL_Renderer *renderer, Background *bg,
     bg->guide.position.w = bg->guide.w;
     bg->guide.position.h = bg->guide.h;
 
-    bg->commentJouer.image = chargerTexture(renderer, "how.png");
-    if (!bg->commentJouer.image) { printf("Erreur how.png\n"); exit(EXIT_FAILURE); }
+    surface = IMG_Load("how.png");
+    if (!surface) { printf("Erreur how.png\n"); exit(EXIT_FAILURE); }
+    bg->commentJouer.image = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_QueryTexture(bg->commentJouer.image, NULL, NULL,
                      &bg->commentJouer.w, &bg->commentJouer.h);
+    SDL_FreeSurface(surface);
     bg->afficherCommentJouer = 0;
 
     *taille = 0;
-
-    /* Scale factors */
-    float scX = (float)screenW / 960.0f;
-
-    /* imgH pour coordonnees monde */
-    SDL_QueryTexture(bg->img[0], NULL, NULL, NULL, &imgH);
-    if (imgH <= 0) imgH = screenH;
-    /* baseY = camera_pos.y initial = offset du bas de l'image */
-    {
-        int baseY = (imgH > screenH) ? (imgH - screenH) : 0;
-
-#define PX(v)  ((int)((v) * scX))
-#define PW(v)  ((int)((v) * scX))
-#define PH15   ((int)(15.0f * ((float)screenH / 540.0f)) < 8 ? 8 : (int)(15.0f * ((float)screenH / 540.0f)))
-/* Y monde = baseY + pourcentage de screenH */
-#define SY(pct) (baseY + (int)(screenH * (pct) / 100))
-
-    if (level == 1) {
-        /* ── Level 1 — plateformes alignees sur les rebords du building ── */
-
-        /* Sol / trottoir */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = 0;       p->position.y = SY(63);
-        p->position.w = screenW; p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 80, 80, 80);
-        (*taille)++;
-
-        /* Rebord entre RDC et 1er etage (HARRIS sign level) */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(80);  p->position.y = SY(38);
-        p->position.w = PW(200); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 130, 130, 130);
-        (*taille)++;
-
-        /* Rebord 2eme etage milieu */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(380); p->position.y = SY(25);
-        p->position.w = PW(200); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 130, 130, 130);
-        (*taille)++;
-
-        /* Toit droite */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(650); p->position.y = SY(12);
-        p->position.w = PW(200); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 130, 130, 130);
-        (*taille)++;
-
-        /* Toit gauche haut */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(200); p->position.y = SY(5);
-        p->position.w = PW(150); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 130, 130, 130);
-        (*taille)++;
-
-        /* Plateforme mobile entre RDC et 1er etage */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_MOBILE; p->hp = -1;
-        p->position.x = PX(50);  p->position.y = SY(50);
-        p->position.w = PW(180); p->position.h = PH15;
-        p->vitesse = 3; p->moveAxis = 0; p->moveDir = 1;
-        p->moveMin = PX(50); p->moveMax = PX(450);
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 0, 140, 230);
-        (*taille)++;
-
-    } else {
-        /* ── Level 2 ── */
-
-        /* Sol */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = 0;       p->position.y = SY(63);
-        p->position.w = screenW; p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 60, 60, 60);
-        (*taille)++;
-
-        /* Rebord 1er etage gauche */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(50);  p->position.y = SY(40);
-        p->position.w = PW(180); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 100, 100, 100);
-        (*taille)++;
-
-        /* Rebord 2eme etage milieu */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(300); p->position.y = SY(27);
-        p->position.w = PW(160); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 100, 100, 100);
-        (*taille)++;
-
-        /* Toit droite */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(600); p->position.y = SY(14);
-        p->position.w = PW(200); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 100, 100, 100);
-        (*taille)++;
-
-        /* Toit loin droite */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_FIXE; p->hp = -1;
-        p->position.x = PX(830); p->position.y = SY(6);
-        p->position.w = PW(150); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 100, 100, 100);
-        (*taille)++;
-
-        /* Mobile horizontal */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_MOBILE; p->hp = -1;
-        p->position.x = PX(80);  p->position.y = SY(52);
-        p->position.w = PW(160); p->position.h = PH15;
-        p->vitesse = 4; p->moveAxis = 0; p->moveDir = 1;
-        p->moveMin = PX(80); p->moveMax = PX(480);
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 0, 160, 220);
-        (*taille)++;
-
-        /* Mobile vertical */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_MOBILE; p->hp = -1;
-        p->position.x = PX(700); p->position.y = SY(30);
-        p->position.w = PW(140); p->position.h = PH15;
-        p->vitesse = 3; p->moveAxis = 1; p->moveDir = 1;
-        p->moveMin = SY(14); p->moveMax = SY(52);
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 0, 160, 220);
-        (*taille)++;
-
-        /* Destructibles */
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_DESTRUCTIBLE; p->hp = 3;
-        p->position.x = PX(200); p->position.y = SY(33);
-        p->position.w = PW(120); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 210, 70, 20);
-        (*taille)++;
-
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_DESTRUCTIBLE; p->hp = 3;
-        p->position.x = PX(470); p->position.y = SY(20);
-        p->position.w = PW(120); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 210, 70, 20);
-        (*taille)++;
-
-        p = &platforms[*taille]; memset(p, 0, sizeof(Platform));
-        p->type = PLATFORM_DESTRUCTIBLE; p->hp = 3;
-        p->position.x = PX(710); p->position.y = SY(10);
-        p->position.w = PW(120); p->position.h = PH15;
-        p->image = creerTextureCouleur(renderer, p->position.w, p->position.h, 210, 70, 20);
-        (*taille)++;
-    } /* end if level */
-#undef SY
-#undef PH15
-#undef PW
-#undef PX
-    } /* end baseY block */
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   updatePlatforms — deplace les plateformes mobiles
-════════════════════════════════════════════════════════════════════ */
 void updatePlatforms(Platform platforms[], int taille)
 {
     int i;
@@ -282,19 +70,16 @@ void updatePlatforms(Platform platforms[], int taille)
         if (p->destroyed || p->type != PLATFORM_MOBILE) continue;
         if (p->moveAxis == 0) {
             p->position.x += p->vitesse * p->moveDir;
-            if (p->position.x <= p->moveMin)                      p->moveDir =  1;
-            if (p->position.x + p->position.w >= p->moveMax)      p->moveDir = -1;
+            if (p->position.x <= p->moveMin)                  p->moveDir =  1;
+            if (p->position.x + p->position.w >= p->moveMax)  p->moveDir = -1;
         } else {
             p->position.y += p->vitesse * p->moveDir;
-            if (p->position.y <= p->moveMin)                      p->moveDir =  1;
-            if (p->position.y + p->position.h >= p->moveMax)      p->moveDir = -1;
+            if (p->position.y <= p->moveMin)                  p->moveDir =  1;
+            if (p->position.y + p->position.h >= p->moveMax)  p->moveDir = -1;
         }
     }
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   afficherPlatforms
-════════════════════════════════════════════════════════════════════ */
 void afficherPlatforms(SDL_Renderer *renderer, Platform platforms[],
                         int taille, int bgX, int bgY)
 {
@@ -323,7 +108,6 @@ void afficherPlatforms(SDL_Renderer *renderer, Platform platforms[],
             SDL_RenderCopy(renderer, p->image, NULL, &dest);
         }
 
-        /* Barre HP pour les plateformes destructibles */
         if (p->type == PLATFORM_DESTRUCTIBLE && p->hp > 0) {
             segW = p->position.w / 3;
             for (h = 0; h < p->hp && h < 3; h++) {
@@ -338,59 +122,35 @@ void afficherPlatforms(SDL_Renderer *renderer, Platform platforms[],
     }
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   gererScrollingDeuxJoueurs — scrolling continu 4 sens avec clamping
-════════════════════════════════════════════════════════════════════ */
 void gererScrollingDeuxJoueurs(SDL_Event event,
                                 Background *bg1, Background *bg2,
-                                int scrollSpeed)
+                                int scrollSpeed, int level)
 {
-    int imgW = 0, imgH = 0;
-    (void)event; /* on n'utilise plus les events — on lit l'etat clavier */
+    int imgW, imgH;
+    const Uint8 *keys;
 
-    const Uint8 *keys = SDL_GetKeyboardState(NULL);
+    imgW = 0;
+    imgH = 0;
+    (void)event;
 
-    /* Recuperer les dimensions de l'image pour le clamping */
+    keys = SDL_GetKeyboardState(NULL);
+
     if (bg1->img[0])
         SDL_QueryTexture(bg1->img[0], NULL, NULL, &imgW, &imgH);
 
-    /* ── Joueur 1 — fleches directionnelles (4 sens) ── */
-    if (keys[SDL_SCANCODE_RIGHT]) {
-        bg1->direction = 0;
-        bg1->camera_pos.x += scrollSpeed;
-    }
-    if (keys[SDL_SCANCODE_LEFT]) {
-        bg1->direction = 1;
-        bg1->camera_pos.x -= scrollSpeed;
-    }
-    if (keys[SDL_SCANCODE_UP]) {
-        bg1->direction = 2;
-        bg1->camera_pos.y -= scrollSpeed;
-    }
-    if (keys[SDL_SCANCODE_DOWN]) {
-        bg1->direction = 3;
-        bg1->camera_pos.y += scrollSpeed;
-    }
+    /* Joueur 1 : fleches, scrolling 4 sens */
+    if (keys[SDL_SCANCODE_RIGHT]) { bg1->direction = 0; bg1->camera_pos.x += scrollSpeed; }
+    if (keys[SDL_SCANCODE_LEFT])  { bg1->direction = 1; bg1->camera_pos.x -= scrollSpeed; }
+    if (keys[SDL_SCANCODE_UP])    { bg1->direction = 2; bg1->camera_pos.y -= scrollSpeed; }
+    if (keys[SDL_SCANCODE_DOWN])  { bg1->direction = 3; bg1->camera_pos.y += scrollSpeed; }
 
-    /* ── Joueur 2 — ZQSD (4 sens) ── */
-    if (keys[SDL_SCANCODE_D]) {
-        bg2->direction = 0;
-        bg2->camera_pos.x += scrollSpeed;
-    }
-    if (keys[SDL_SCANCODE_Q] || keys[SDL_SCANCODE_A]) {
-        bg2->direction = 1;
-        bg2->camera_pos.x -= scrollSpeed;
-    }
-    if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_Z]) {
-        bg2->direction = 2;
-        bg2->camera_pos.y -= scrollSpeed;
-    }
-    if (keys[SDL_SCANCODE_S]) {
-        bg2->direction = 3;
-        bg2->camera_pos.y += scrollSpeed;
-    }
+    /* Joueur 2 : WASD/ZQSD, scrolling 4 sens */
+    if (keys[SDL_SCANCODE_D])                         { bg2->direction = 0; bg2->camera_pos.x += scrollSpeed; }
+    if (keys[SDL_SCANCODE_Q] || keys[SDL_SCANCODE_A]) { bg2->direction = 1; bg2->camera_pos.x -= scrollSpeed; }
+    if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_Z]) { bg2->direction = 2; bg2->camera_pos.y -= scrollSpeed; }
+    if (keys[SDL_SCANCODE_S])                         { bg2->direction = 3; bg2->camera_pos.y += scrollSpeed; }
 
-    /* ── Clamping bg1 (4 sens) ── */
+    /* Clamp camera bg1 */
     if (imgW > 0) {
         if (bg1->camera_pos.x < 0) bg1->camera_pos.x = 0;
         if (bg1->camera_pos.w > 0 && bg1->camera_pos.x + bg1->camera_pos.w > imgW)
@@ -404,7 +164,7 @@ void gererScrollingDeuxJoueurs(SDL_Event event,
         if (bg1->camera_pos.y < 0) bg1->camera_pos.y = 0;
     }
 
-    /* ── Clamping bg2 ── */
+    /* Clamp camera bg2 (independant meme si bg2 == bg1) */
     if (bg2 != bg1) {
         if (imgW > 0) {
             if (bg2->camera_pos.x < 0) bg2->camera_pos.x = 0;
@@ -419,11 +179,10 @@ void gererScrollingDeuxJoueurs(SDL_Event event,
             if (bg2->camera_pos.y < 0) bg2->camera_pos.y = 0;
         }
     }
+
+    (void)level;
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   gererTemps
-════════════════════════════════════════════════════════════════════ */
 void gererTemps(int *timeLeft, Uint32 *lastTime)
 {
     Uint32 now   = SDL_GetTicks();
@@ -434,9 +193,6 @@ void gererTemps(int *timeLeft, Uint32 *lastTime)
     }
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   afficherTemps — format MM:SS centre en haut
-════════════════════════════════════════════════════════════════════ */
 void afficherTemps(SDL_Renderer *renderer, TTF_Font *font,
                    int timeLeft, int screenW)
 {
@@ -469,9 +225,6 @@ void afficherTemps(SDL_Renderer *renderer, TTF_Font *font,
     SDL_FreeSurface(surf);
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   gererGuideEtClic
-════════════════════════════════════════════════════════════════════ */
 void gererGuideEtClic(SDL_Event event, GuideButton *guide,
                        SDL_TextureWithRect *commentJouer,
                        int *afficherCommentJouer)
@@ -497,9 +250,6 @@ void gererGuideEtClic(SDL_Event event, GuideButton *guide,
     }
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   afficherBackgroundEtElements
-════════════════════════════════════════════════════════════════════ */
 void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
                                    Platform platforms[], int taille,
                                    TTF_Font *font, SDL_Color textColor,
@@ -517,51 +267,41 @@ void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
     SDL_Color cyan, blanc;
     SDL_Surface *lblSurf;
     SDL_Texture *lblTex;
-    SDL_Rect r, dest, destImg;
+    SDL_Rect r, destImg, src, dst2;
     SDL_Surface *s;
     SDL_Texture *t;
+    int imgW, imgH;
+
     (void)textColor;
-    (void)dest;
 
-    /* ── Background: scroll 4 sens complet ── */
-    {
-        SDL_Rect src, dst2;
-        int imgW, imgH;
-        SDL_QueryTexture(bg->img[0], NULL, NULL, &imgW, &imgH);
+    SDL_QueryTexture(bg->img[0], NULL, NULL, &imgW, &imgH);
 
-        /* Clamping horizontal */
-        if (bg->camera_pos.x < 0) bg->camera_pos.x = 0;
-        if (imgW > screenW && bg->camera_pos.x + screenW > imgW)
-            bg->camera_pos.x = imgW - screenW;
-        if (bg->camera_pos.x < 0) bg->camera_pos.x = 0;
+    if (bg->camera_pos.x < 0) bg->camera_pos.x = 0;
+    if (imgW > screenW && bg->camera_pos.x + screenW > imgW)
+        bg->camera_pos.x = imgW - screenW;
+    if (bg->camera_pos.x < 0) bg->camera_pos.x = 0;
 
-        /* Clamping vertical */
-        if (bg->camera_pos.y < 0) bg->camera_pos.y = 0;
-        if (imgH > screenH && bg->camera_pos.y + screenH > imgH)
-            bg->camera_pos.y = imgH - screenH;
-        if (bg->camera_pos.y < 0) bg->camera_pos.y = 0;
+    if (bg->camera_pos.y < 0) bg->camera_pos.y = 0;
+    if (imgH > screenH && bg->camera_pos.y + screenH > imgH)
+        bg->camera_pos.y = imgH - screenH;
+    if (bg->camera_pos.y < 0) bg->camera_pos.y = 0;
 
-        if (imgH >= screenH) {
-            /* Image assez grande: vrai scrolling */
-            src.x = bg->camera_pos.x;
-            src.y = bg->camera_pos.y;
-            src.w = (imgW < screenW) ? imgW : screenW;
-            src.h = screenH;
-        } else {
-            /* Image trop petite: stretch pour couvrir tout l'ecran */
-            src.x = bg->camera_pos.x;
-            src.y = 0;
-            src.w = (imgW < screenW) ? imgW : screenW;
-            src.h = imgH;
-        }
-        dst2.x = 0; dst2.y = 0; dst2.w = screenW; dst2.h = screenH;
-        SDL_RenderCopy(renderer, bg->img[0], &src, &dst2);
+    if (imgH >= screenH) {
+        src.x = bg->camera_pos.x;
+        src.y = bg->camera_pos.y;
+        src.w = (imgW < screenW) ? imgW : screenW;
+        src.h = screenH;
+    } else {
+        src.x = bg->camera_pos.x;
+        src.y = 0;
+        src.w = (imgW < screenW) ? imgW : screenW;
+        src.h = imgH;
     }
+    dst2.x = 0; dst2.y = 0; dst2.w = screenW; dst2.h = screenH;
+    SDL_RenderCopy(renderer, bg->img[0], &src, &dst2);
 
-    /* ── Plateformes — offset par la camera ── */
-    afficherPlatforms(renderer, platforms, taille, bg->camera_pos.x, bg->camera_pos.y);
+    afficherPlatforms(renderer, platforms, taille, bgX, bgY);
 
-    /* ── Barre de temps ── */
     maxTime = 600;
     barW = (mode == MODE_MULTI) ? 200 : 300;
     barH = 16; rad = 7;
@@ -606,13 +346,11 @@ void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
 
     afficherTemps(renderer, font, timeLeft, screenW);
 
-    /* ── Bouton guide (mode solo seulement) ── */
     if (mode == MODE_MONO) {
         bg->guide.position.x = screenW - bg->guide.w - 10;
         SDL_RenderCopy(renderer, bg->guide.image, NULL, &bg->guide.position);
     }
 
-    /* ── Vies (logo Batman dessine pixel par pixel) ── */
     bat[0][0]=7;  bat[0][1]=2;
     bat[1][0]=4;  bat[1][1]=4;
     bat[2][0]=2;  bat[2][1]=20;
@@ -656,7 +394,6 @@ void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
     }
     (void)bw; (void)spacing;
 
-    /* ── Label CAM en mode multi ── */
     if (mode == MODE_MULTI && font) {
         blanc.r = 255; blanc.g = 255; blanc.b = 255; blanc.a = 200;
         s = TTF_RenderText_Solid(font, "CAM", blanc);
@@ -671,7 +408,6 @@ void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
         }
     }
 
-    /* ── Fenetre guide/comment jouer ── */
     if (bg->afficherCommentJouer) {
         maxW = screenW - 80;
         maxH = screenH - 80;
@@ -686,22 +422,20 @@ void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
     }
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   saisirNomEtAfficherScore
-════════════════════════════════════════════════════════════════════ */
 void saisirNomEtAfficherScore(SDL_Renderer *renderer, TTF_Font *font,
                                int score, int screenW, int screenH)
 {
-    char nom[64], aff[66], l1[80], l2[80];
-    int len = 0, done = 0, showing = 1;
-    int boxW = 500, boxH = 250;
-    int boxX = screenW / 2 - boxW / 2;
-    int boxY, cx;
+    char nom[64], aff[66], ligne1[80], ligne2[80];
+    int len, done, showing, boxW, boxH, boxX, boxY, cx;
     SDL_Color blanc, jaune;
     SDL_Event ev;
     SDL_Surface *s;
     SDL_Texture *tex;
     SDL_Rect r;
+
+    len = 0; done = 0; showing = 1;
+    boxW = 500; boxH = 250;
+    boxX = screenW / 2 - boxW / 2;
 
     memset(nom, 0, sizeof(nom));
     blanc.r = 255; blanc.g = 255; blanc.b = 255; blanc.a = 255;
@@ -766,15 +500,15 @@ void saisirNomEtAfficherScore(SDL_Renderer *renderer, TTF_Font *font,
         SDL_SetRenderDrawColor(renderer, jaune.r, jaune.g, jaune.b, 255);
         SDL_RenderDrawRect(renderer, &r);
 
-        snprintf(l1, sizeof(l1), "Joueur : %s", nom[0] ? nom : "Anonyme");
-        s = TTF_RenderText_Solid(font, l1, blanc);
+        snprintf(ligne1, sizeof(ligne1), "Joueur : %s", nom[0] ? nom : "Anonyme");
+        s = TTF_RenderText_Solid(font, ligne1, blanc);
         if (s) { tex = SDL_CreateTextureFromSurface(renderer, s);
             r.x = cx - s->w/2; r.y = boxY + 20; r.w = s->w; r.h = s->h;
             SDL_RenderCopy(renderer, tex, NULL, &r);
             SDL_DestroyTexture(tex); SDL_FreeSurface(s); }
 
-        snprintf(l2, sizeof(l2), "Score : %d", score);
-        s = TTF_RenderText_Solid(font, l2, jaune);
+        snprintf(ligne2, sizeof(ligne2), "Score : %d", score);
+        s = TTF_RenderText_Solid(font, ligne2, jaune);
         if (s) { tex = SDL_CreateTextureFromSurface(renderer, s);
             r.x = cx - s->w/2; r.y = boxY + 100; r.w = s->w; r.h = s->h;
             SDL_RenderCopy(renderer, tex, NULL, &r);

@@ -28,7 +28,6 @@ int main(int argc, char *argv[])
     Uint32        lastTime;
     SDL_Color     textColor = {255, 255, 255, 255};
 
-    /* ── Init SDL ── */
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         printf("Erreur SDL_Init : %s\n", SDL_GetError());
         return 1;
@@ -42,7 +41,6 @@ int main(int argc, char *argv[])
         TTF_Quit(); SDL_Quit(); return 1;
     }
 
-    /* ── Fenetre plein ecran ── */
     window = SDL_CreateWindow("Batman vs Catwoman",
                               SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,
@@ -61,33 +59,25 @@ int main(int argc, char *argv[])
         SDL_DestroyWindow(window); SDL_Quit(); return 1;
     }
 
-    /* Lire les vraies dimensions apres fullscreen */
     SDL_GetRendererOutputSize(renderer, &screenW, &screenH);
 
-    /* ── Init background + plateformes ── */
     initBackgroundAndPlatforms(renderer, &bg, platforms, &taille, level, screenW, screenH);
 
-    /* ── Police ── */
     font = TTF_OpenFont("arial.ttf", 20);
     if (!font) font = TTF_OpenFont("font.ttf", 20);
     if (!font) printf("Avertissement : police non chargee\n");
 
     lastTime = SDL_GetTicks();
 
-    /* ════════════════════════════════
-       Boucle principale
-    ════════════════════════════════ */
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) { running = 0; break; }
             if (event.type == SDL_KEYDOWN) {
                 switch (event.key.keysym.sym) {
                     case SDLK_ESCAPE: running = 0; break;
-                    /* P = basculer mono/multi */
                     case SDLK_p:
                         affMode = (affMode == MODE_MONO) ? MODE_MULTI : MODE_MONO;
                         break;
-                    /* F1 / F2 = changer de level */
                     case SDLK_F1:
                         if (level != 1) {
                             level = 1; taille = 0;
@@ -105,22 +95,17 @@ int main(int argc, char *argv[])
                     default: break;
                 }
             }
-            /* Guide (click bouton ou touche G/H) */
             gererGuideEtClic(event, &bg.guide, &bg.commentJouer,
                              &bg.afficherCommentJouer);
         }
 
-        /* Scrolling continu — appele une fois par frame hors event loop */
-        gererScrollingDeuxJoueurs(event, &bg, &bg, 20);
+        gererScrollingDeuxJoueurs(event, &bg, &bg, 20, level);
 
-        /* Timer */
         gererTemps(&timeLeft, &lastTime);
         if (timeLeft <= 0) timeLeft = 0;
 
-        /* Deplacer plateformes mobiles */
         updatePlatforms(platforms, taille);
 
-        /* ── Rendu ── */
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
@@ -156,12 +141,10 @@ int main(int argc, char *argv[])
         SDL_Delay(16);
     }
 
-    /* ── Saisie nom + score final ── */
     SDL_RenderSetViewport(renderer, NULL);
     if (font)
         saisirNomEtAfficherScore(renderer, font, 0, screenW, screenH);
 
-    /* ── Cleanup ── */
     if (bg.img[0])             SDL_DestroyTexture(bg.img[0]);
     if (bg.guide.image)        SDL_DestroyTexture(bg.guide.image);
     if (bg.commentJouer.image) SDL_DestroyTexture(bg.commentJouer.image);
