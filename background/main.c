@@ -1,6 +1,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_mixer.h>
 #include <stdio.h>
 #include "back.h"
 
@@ -14,6 +15,7 @@ int main(int argc, char *argv[])
     SDL_Window   *window;
     SDL_Renderer *renderer;
     TTF_Font     *font;
+    Mix_Music    *music = NULL;
     Background    bg;
     Platform      platforms[MAX_PLATFORMS];
     SDL_Event     event;
@@ -28,7 +30,7 @@ int main(int argc, char *argv[])
     Uint32        lastTime;
     SDL_Color     textColor = {255, 255, 255, 255};
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0) {
         printf("Erreur SDL_Init : %s\n", SDL_GetError());
         return 1;
     }
@@ -61,10 +63,20 @@ int main(int argc, char *argv[])
 
     SDL_GetRendererOutputSize(renderer, &screenW, &screenH);
 
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) == 0) {
+        music = Mix_LoadMUS("menu_music.mp3");
+        if (music)
+            Mix_PlayMusic(music, -1);
+        else
+            printf("Avertissement : menu_music non charge : %s\n", Mix_GetError());
+    } else {
+        printf("Avertissement : Mix_OpenAudio : %s\n", Mix_GetError());
+    }
+
     initBackgroundAndPlatforms(renderer, &bg, platforms, &taille, level, screenW, screenH);
 
-    font = TTF_OpenFont("arial.ttf", 20);
-    if (!font) font = TTF_OpenFont("font.ttf", 20);
+    font = TTF_OpenFont("font.ttf", 20);
+    if (!font) font = TTF_OpenFont("arial.ttf", 20);
     if (!font) printf("Avertissement : police non chargee\n");
 
     lastTime = SDL_GetTicks();
@@ -146,6 +158,8 @@ int main(int argc, char *argv[])
         saisirNomEtAfficherScore(renderer, font, 0, screenW, screenH);
 
     if (bg.img[0])             SDL_DestroyTexture(bg.img[0]);
+    if (bg.img[1])             SDL_DestroyTexture(bg.img[1]);
+    if (bg.img[2])             SDL_DestroyTexture(bg.img[2]);
     if (bg.guide.image)        SDL_DestroyTexture(bg.guide.image);
     if (bg.commentJouer.image) SDL_DestroyTexture(bg.commentJouer.image);
     {
@@ -162,6 +176,8 @@ int main(int argc, char *argv[])
         }
     }
     if (font) TTF_CloseFont(font);
+    if (music) { Mix_HaltMusic(); Mix_FreeMusic(music); }
+    Mix_CloseAudio();
     TTF_Quit();
     IMG_Quit();
     SDL_DestroyRenderer(renderer);
