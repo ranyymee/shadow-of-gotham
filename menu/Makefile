@@ -1,10 +1,16 @@
 # Makefile — Shadow Of Gotham
+# FIX: all .c files are in the same folder (flat layout)
+# FIX: two separate targets:
+#   make          -> builds the integrated game (Main.c)
+#   make enigme   -> builds the standalone enigme+puzzle (mainfarah.c)
+
 CC     = gcc
-CFLAGS = -Wall -Wextra -std=c11 -Iheader $(shell sdl2-config --cflags)
+CFLAGS = -Wall -Wextra -std=c11 $(shell sdl2-config --cflags)
 LIBS   = $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lm
+
+# ── Integrated game ──────────────────────────────────────────────────────
 TARGET = prog
 
-# Liste des objets (AJOUT DE menu.o ET button.o)
 OBJS = Main.o sourceMenu.o score.o enigme.o menu.o button.o sauvegarde.o options.o
 
 all: $(TARGET)
@@ -12,33 +18,54 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-Main.o: main/Main.c
-	$(CC) $(CFLAGS) -c -o $@ main/Main.c
+Main.o: Main.c
+	$(CC) $(CFLAGS) -c -o $@ Main.c
 
-sourceMenu.o: src/sourceMenu.c
-	$(CC) $(CFLAGS) -c -o $@ src/sourceMenu.c
+sourceMenu.o: sourceMenu.c
+	$(CC) $(CFLAGS) -c -o $@ sourceMenu.c
 
-score.o: src/score.c
-	$(CC) $(CFLAGS) -c -o $@ src/score.c
+score.o: score.c
+	$(CC) $(CFLAGS) -c -o $@ score.c
 
-enigme.o: src/enigme.c
-	$(CC) $(CFLAGS) -c -o $@ src/enigme.c
+enigme.o: enigme.c
+	$(CC) $(CFLAGS) -c -o $@ enigme.c
 
-# NOUVELLES RÈGLES POUR LE MENU JOUEUR
-menu.o: src/menu.c
-	$(CC) $(CFLAGS) -c -o $@ src/menu.c
+menu.o: menu.c
+	$(CC) $(CFLAGS) -c -o $@ menu.c
 
-button.o: src/button.c
-	$(CC) $(CFLAGS) -c -o $@ src/button.c
-# RULE FOR YOUR SAUVEGARDE MENU
-sauvegarde.o: src/sauvegarde.c
-	$(CC) $(CFLAGS) -c -o $@ src/sauvegarde.c
+button.o: button.c
+	$(CC) $(CFLAGS) -c -o $@ button.c
 
-# RÈGLE POUR LE MENU OPTIONS (projet collègue)
-options.o: src/options.c
-	$(CC) $(CFLAGS) -c -o $@ src/options.c
+sauvegarde.o: sauvegarde.c
+	$(CC) $(CFLAGS) -c -o $@ sauvegarde.c
 
+options.o: options.c
+	$(CC) $(CFLAGS) -c -o $@ options.c
+
+# ── Standalone enigme + puzzle ────────────────────────────────────────────
+ENIGME_TARGET = enigme_standalone
+
+ENIGME_OBJS = mainfarah.o mainp.o enigme_s.o puzzle.o
+
+enigme: $(ENIGME_TARGET)
+
+$(ENIGME_TARGET): $(ENIGME_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+mainfarah.o: mainfarah.c
+	$(CC) $(CFLAGS) -c -o $@ mainfarah.c
+
+mainp.o: mainp.c
+	$(CC) $(CFLAGS) -c -o $@ mainp.c
+
+enigme_s.o: enigme.c
+	$(CC) $(CFLAGS) -c -o $@ enigme.c
+
+puzzle.o: puzzle.c
+	$(CC) $(CFLAGS) -c -o $@ puzzle.c
+
+# ── Clean ─────────────────────────────────────────────────────────────────
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(ENIGME_OBJS) $(TARGET) $(ENIGME_TARGET)
 
-.PHONY: all clean
+.PHONY: all enigme clean

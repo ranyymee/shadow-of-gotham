@@ -153,3 +153,40 @@ void destroy(Menu *menu)
     TTF_Quit();
     SDL_Quit();
 }
+
+/* ================= LOAD BUTTONS ================= */
+void loadButtons(Menu *menu)
+{
+    const char *normalPaths[BUTTON_COUNT] = {
+        "assets/image/bouton play.png",
+        "assets/image/bouton option.png",
+        "assets/image/bouton score.png",
+        "assets/image/bouton history.png",
+        "assets/image/bouton quitter.png"
+    };
+    const char *hoverPaths[BUTTON_COUNT] = {
+        "assets/image/bouton play 1.png",
+        "assets/image/bouton option 1.png",
+        "assets/image/bouton score 1.png",
+        "assets/image/bouton history 1.png",
+        "assets/image/bouton quitter 1.png"
+    };
+
+    int W, H;
+    SDL_GetRendererOutputSize(menu->renderer, &W, &H);
+
+    int bW = W * 22 / 100;
+    int bH = H * 9 / 100;
+    int bX = W * 38 / 100;
+    int startY = H * 38 / 100;
+    int gap    = H * 11 / 100;
+
+    for (int i = 0; i < BUTTON_COUNT; i++) {
+        menu->buttons[i].normal = loadTextureMenu(menu, normalPaths[i]);
+        menu->buttons[i].hover  = loadTextureMenu(menu, hoverPaths[i]);
+        menu->buttons[i].rect   = (SDL_Rect){ bX, startY + i * gap, bW, bH };
+        menu->buttons[i].state  = 0;
+    }
+}
+
+/* ================= LOAD BUTTONS ================= */

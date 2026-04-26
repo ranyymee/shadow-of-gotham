@@ -170,7 +170,7 @@ void saveScore(const char *player_name, int score)
 static void runEnigmeLoop(SDL_Renderer *renderer, TTF_Font *font)
 {
     Enigme e;
-    initEnigme(&e, renderer);
+    int scrW, scrH; SDL_GetRendererOutputSize(renderer, &scrW, &scrH); initEnigme(&e, renderer, scrW, scrH);
     TTF_Font *fontSmall = TTF_OpenFont("assets/font/font.ttf", 24);
     if (!fontSmall) fontSmall = font;
     SDL_Event ev;
@@ -185,7 +185,7 @@ static void runEnigmeLoop(SDL_Renderer *renderer, TTF_Font *font)
         updateEnigme(&e);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-        renderEnigme(&e, renderer, font, fontSmall);
+        renderEnigme(&e, renderer, font, fontSmall, fontSmall);
         SDL_RenderPresent(renderer);
         if (e.questionIndex >= NB_QUESTIONS) { SDL_Delay(1500); done = 1; }
         SDL_Delay(16);

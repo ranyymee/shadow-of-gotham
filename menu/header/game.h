@@ -14,6 +14,18 @@
 #define MAX_NAME      100
 #define MAX_FRAMES    50
 
+/* ==================== GAME STATE (Main.c) ==================== */
+/* FIX: This enum was completely missing — Main.c uses all these values */
+typedef enum {
+    STATE_MENU,
+    STATE_SAUVEGARDE,
+    STATE_OPTIONS,
+    STATE_PLAYER,
+    STATE_SCORES,
+    STATE_ENIGME,
+    STATE_QUIT
+} GameState;
+
 /* ==================== MENU PRINCIPAL ==================== */
 typedef enum {
     PLAY,
@@ -37,6 +49,7 @@ typedef struct {
 
     SDL_Texture *frames[FRAME_COUNT];
     int          currentFrame;
+    int          bgDirection;   /* FIX: was missing from struct */
 
     Button buttons[BUTTON_COUNT];
 

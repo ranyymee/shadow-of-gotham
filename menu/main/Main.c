@@ -2,13 +2,14 @@
  * Main.c — Point d'entrée unique du jeu "Shadow Of Gotham"
  */
 
+#include "game.h"        /* FIX: added — defines GameState enum and Menu.bgDirection */
 #include "header.h"
 #include "integrated.h"
 #include "enigme.h"
-#include "menu.h"  
-#include "options.h"     /* Menu Options — projet collègue */
+#include "menu.h"
+#include "options.h"
 #include <stdio.h>
-#include "sauvegarde.h" // YOUR HEADER
+#include "sauvegarde.h"
 
 
 int main(int argc, char *argv[])
@@ -24,15 +25,15 @@ int main(int argc, char *argv[])
     GameState state = STATE_MENU;
 
     /* Menu joueur */
-    PlayerMenu playerMenu;  
+    PlayerMenu playerMenu;
     bool playerMenuInitialized = false;
     int playerScore = 0;
 
-    /* Options — projet collègue */
+    /* Options */
     Options     options;
     int         optionsInit = 0;
 
-    /* Enigme — chargée à la demande */
+    /* Enigme */
     Enigme    enigme;
     int       enigmeInit       = 0;
     TTF_Font *fontEnigme       = NULL;
@@ -55,11 +56,10 @@ int main(int argc, char *argv[])
 
                 if (e.type == SDL_KEYDOWN && e.key.repeat == 0) {
                     switch (e.key.keysym.sym) {
-                        case SDLK_s:      state = STATE_SCORES;  break;
-                        case SDLK_e:      state = STATE_ENIGME;  break;
-                        case SDLK_p:      state = STATE_SAUVEGARDE;  break;
-                        case SDLK_o:      state = STATE_OPTIONS; break; /* Touche O → Options */
-
+                        case SDLK_s:      state = STATE_SCORES;     break;
+                        case SDLK_e:      state = STATE_ENIGME;     break;
+                        case SDLK_p:      state = STATE_SAUVEGARDE; break;
+                        case SDLK_o:      state = STATE_OPTIONS;    break;
                         case SDLK_ESCAPE:
                             state = STATE_QUIT;
                             menu.running = false;
@@ -87,12 +87,10 @@ int main(int argc, char *argv[])
                             if (menu.clickSound)
                                 Mix_PlayChannel(-1, menu.clickSound, 0);
                             switch (i) {
-                                case 0: // PLAY BUTTON
-                                    state = STATE_SAUVEGARDE; // REDIRECTED TO YOUR MENU
-                                    break;
-                                case 1: state = STATE_OPTIONS; break; /* Bouton Options */
-                                case 2: state = STATE_SCORES;       break;
-                                case 3: state = STATE_ENIGME;       break;
+                                case 0: state = STATE_SAUVEGARDE; break;
+                                case 1: state = STATE_OPTIONS;    break;
+                                case 2: state = STATE_SCORES;     break;
+                                case 3: state = STATE_ENIGME;     break;
                                 case 4:
                                     state = STATE_QUIT;
                                     menu.running = false;
@@ -103,13 +101,13 @@ int main(int argc, char *argv[])
                     }
                 }
             }
-menu.currentFrame += menu.bgDirection;
-if (menu.currentFrame >= FRAME_COUNT - 1) menu.bgDirection = -1;
-if (menu.currentFrame <= 0)               menu.bgDirection =  1;
+            menu.currentFrame += menu.bgDirection;
+            if (menu.currentFrame >= FRAME_COUNT - 1) menu.bgDirection = -1;
+            if (menu.currentFrame <= 0)               menu.bgDirection =  1;
             render(&menu);
         }
 
-        /* ---- VOTRE SOUS-MENU SAUVEGARDE (NOUVEAU) ---- */
+        /* ---- SOUS-MENU SAUVEGARDE ---- */
         else if (state == STATE_SAUVEGARDE)
         {
             while (SDL_PollEvent(&e)) {
@@ -120,20 +118,14 @@ if (menu.currentFrame <= 0)               menu.bgDirection =  1;
                 }
                 gerer_evenement_sauvegarde(e, &state);
             }
-            
-            // 1. Clear the old Main Menu frame
-            SDL_RenderClear(menu.renderer); 
-            
-            // 2. Draw your animated background and buttons
-            afficher_sous_menu_sauvegarde(menu.renderer); 
-            
-            // 3. IMPORTANT: Push the drawing to the screen so it's not "stuck"
-            SDL_RenderPresent(menu.renderer); 
+            SDL_RenderClear(menu.renderer);
+            afficher_sous_menu_sauvegarde(menu.renderer);
+            SDL_RenderPresent(menu.renderer);
         }
-        /* ---- MENU OPTIONS (projet collègue) ---- */
+
+        /* ---- MENU OPTIONS ---- */
         else if (state == STATE_OPTIONS)
         {
-            /* Initialisation à la première entrée */
             if (!optionsInit) {
                 Mix_HaltMusic();
                 if (!initOptions(&options, menu.renderer)) {
@@ -154,7 +146,6 @@ if (menu.currentFrame <= 0)               menu.bgDirection =  1;
                     running_opt = 0;
                     break;
                 }
-                /* ESC → retour au menu principal */
                 if (e.type == SDL_KEYDOWN && e.key.repeat == 0 &&
                     e.key.keysym.sym == SDLK_ESCAPE) {
                     freeOptions(&options);
@@ -164,9 +155,7 @@ if (menu.currentFrame <= 0)               menu.bgDirection =  1;
                     running_opt = 0;
                     break;
                 }
-                /* Déléguer les événements à la collègue */
                 inputOptions(&options, e, menu.window, &running_opt);
-                /* Si la collègue a demandé à quitter son écran (back) */
                 if (!running_opt) {
                     freeOptions(&options);
                     optionsInit = 0;
@@ -210,14 +199,14 @@ if (menu.currentFrame <= 0)               menu.bgDirection =  1;
                     state = STATE_QUIT;
                     break;
                 }
-                
+
                 bool goToScore = handlePlayerMenuEvents(&playerMenu, &e, &menu.running);
                 if (goToScore) {
                     playerScore = playerMenu.playerScore;
                     state = STATE_SCORES;
                     break;
                 }
-                
+
                 if (e.type == SDL_KEYDOWN && e.key.repeat == 0 &&
                     e.key.keysym.sym == SDLK_ESCAPE) {
                     state = STATE_MENU;
@@ -303,7 +292,8 @@ if (menu.currentFrame <= 0)               menu.bgDirection =  1;
             } else {
                 updateEnigme(&enigme);
                 SDL_RenderClear(menu.renderer);
-                renderEnigme(&enigme, menu.renderer, fontEnigme, fontEnigmeSmall);
+                /* FIX: renderEnigme needs 5 args — was called with only 4 */
+                renderEnigme(&enigme, menu.renderer, fontEnigme, fontEnigmeSmall, NULL);
                 SDL_RenderPresent(menu.renderer);
             }
         }
