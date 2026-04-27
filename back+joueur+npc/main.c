@@ -462,6 +462,76 @@ static void doScrolling(Background *bg, Player *p1, Player *p2,
     if (p2->x > screenW - p2->w) p2->x = screenW - p2->w;
 }
 
+static void switchLevel(int level, SDL_Renderer *renderer,
+                        Background *bg, Platform platforms[], int *taille,
+                        GameNPC *gameNPC,
+                        Player *p1, Player *p2,
+                        int screenW, int screenH,
+                        float groundEcran,
+                        int *timeLeft, Uint32 *lastTime,
+                        int *invP1, int *invP2,
+                        int *invObstacleP1, int *invObstacleP2)
+{
+    int i, f;
+
+    /* Cleanup old background textures */
+    for (i = 0; i < 8; i++) if (bg->img[i]) { SDL_DestroyTexture(bg->img[i]); bg->img[i] = NULL; }
+    if (bg->guide.image)        { SDL_DestroyTexture(bg->guide.image);        bg->guide.image = NULL; }
+    if (bg->commentJouer.image) { SDL_DestroyTexture(bg->commentJouer.image); bg->commentJouer.image = NULL; }
+
+    /* Cleanup old platforms */
+    for (i = 0; i < *taille; i++) {
+        Platform *pp = &platforms[i];
+        if (pp->isAnimated) {
+            for (f = 0; f < MAX_FRAMES; f++)
+                if (pp->frames[f]) { SDL_DestroyTexture(pp->frames[f]); pp->frames[f] = NULL; }
+        } else {
+            if (pp->image) { SDL_DestroyTexture(pp->image); pp->image = NULL; }
+        }
+    }
+    *taille = 0;
+
+    /* Cleanup old NPCs */
+    NPC_clean(gameNPC);
+
+    /* Load new level */
+    initBackgroundAndPlatforms(renderer, bg, platforms, taille, level, screenW, screenH);
+    bg->camera_pos.x = 0;
+    bg->camera_pos.y = 0;
+    bg->camera_pos.w = screenW;
+    bg->camera_pos.h = screenH;
+
+    NPC_init(gameNPC, renderer, NULL);
+    NPC_loadLevel(gameNPC, renderer, level);
+    gameNPC->pH     = &p1->hp;
+    gameNPC->pScore = &p1->score;
+
+    /* Reset players position & state (keep score & lives) */
+    p1->x = 150.0f;       p1->y = groundEcran;
+    p1->vitesse = 0.0;    p1->vy = 0.0f;
+    p1->onGround = 1;     p1->jumping = 0;      p1->hopping = 0;
+    p1->isAttacking = 0;  p1->isKicking = 0;    p1->isShooting = 0;
+    p1->isCrouching = 0;  p1->isRunning = 0;
+    p1->actionTimer = 0;  p1->animState = ANIM_IDLE; p1->animFrame = 0;
+    p1->hp = 100;         p1->isAlive = 1;
+    for (i = 0; i < MAX_BULLETS; i++) p1->bullets[i].active = 0;
+
+    p2->x = (float)(screenW - 250); p2->y = groundEcran;
+    p2->vitesse = 0.0;    p2->vy = 0.0f;
+    p2->onGround = 1;     p2->jumping = 0;      p2->hopping = 0;
+    p2->isAttacking = 0;  p2->isKicking = 0;    p2->isShooting = 0;
+    p2->isCrouching = 0;  p2->isRunning = 0;
+    p2->actionTimer = 0;  p2->animState = ANIM_IDLE; p2->animFrame = 0;
+    p2->hp = 100;         p2->isAlive = 1;
+    for (i = 0; i < MAX_BULLETS; i++) p2->bullets[i].active = 0;
+
+    /* Reset timers */
+    *timeLeft = 600;
+    *lastTime = SDL_GetTicks();
+    *invP1 = 0; *invP2 = 0;
+    *invObstacleP1 = 0; *invObstacleP2 = 0;
+}
+
 static void playerAttackEnemy(GameNPC *npc, SDL_Rect *playerRect, int cx, int cy, int *playerScore)
 {
     for (int i = 0; i < npc->enemyCnt; i++) {
@@ -511,6 +581,7 @@ int main(int argc, char *argv[])
     int           invP1    = 0, invP2 = 0;
     int           invObstacleP1 = 0, invObstacleP2 = 0;
     int           running  = 1;
+    int           currentLevel = 1;
     Uint32        lastTime, prevTick;
     SDL_Event     event;
     Player        p1, p2;
@@ -588,7 +659,7 @@ int main(int argc, char *argv[])
     }
 
     NPC_init(&gameNPC, renderer, NULL);
-    NPC_loadLevel(&gameNPC, renderer, 1);
+    NPC_loadLevel(&gameNPC, renderer, currentLevel);
     gameNPC.pH = &p1.hp;
     gameNPC.pScore = &p1.score;
 
@@ -612,8 +683,34 @@ int main(int argc, char *argv[])
 
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_QUIT) { running = 0; break; }
-                if (event.type == SDL_KEYDOWN &&
-                    event.key.keysym.sym == SDLK_ESCAPE) { running = 0; break; }
+                if (event.type == SDL_KEYDOWN) {
+                    SDL_Keycode sym = event.key.keysym.sym;
+                    if (sym == SDLK_ESCAPE) { running = 0; break; }
+
+                    /* F1/F2/F3 = switch level */
+                    int targetLevel = 0;
+                    if (sym == SDLK_F1) targetLevel = 1;
+                    else if (sym == SDLK_F2) targetLevel = 2;
+                    else if (sym == SDLK_F3) targetLevel = 3;
+
+                    if (targetLevel > 0 && targetLevel != currentLevel) {
+                        currentLevel = targetLevel;
+                        int ww;
+                        switchLevel(currentLevel, renderer,
+                                    &bg, platforms, &taille,
+                                    &gameNPC,
+                                    &p1, &p2,
+                                    screenW, screenH, groundEcran,
+                                    &timeLeft, &lastTime,
+                                    &invP1, &invP2,
+                                    &invObstacleP1, &invObstacleP2);
+                        ww = bg.partW * bg.imgCount;
+                        if (ww < screenW) ww = screenW;
+                        worldW = ww;
+                        shootCdP1 = 0; shootCdP2 = 0;
+                        prevTick = SDL_GetTicks();
+                    }
+                }
                 gererGuideEtClic(event, &bg.guide, &bg.commentJouer,
                                  &bg.afficherCommentJouer);
             }
@@ -823,6 +920,28 @@ int main(int argc, char *argv[])
             }
 
             renderHUD(renderer, font, &p1, &p2, screenW);
+
+            /* Level indicator — centre haut de l'écran */
+            if (font) {
+                char lvlBuf[32];
+                SDL_Surface *lvlSurf;
+                SDL_Texture *lvlTex;
+                SDL_Rect     lvlDst;
+                SDL_Color    gold = {255, 215, 0, 255};
+                snprintf(lvlBuf, sizeof(lvlBuf), "LEVEL %d  [F1/F2/F3]", currentLevel);
+                lvlSurf = TTF_RenderUTF8_Blended(font, lvlBuf, gold);
+                if (lvlSurf) {
+                    lvlTex = SDL_CreateTextureFromSurface(renderer, lvlSurf);
+                    lvlDst.x = screenW / 2 - lvlSurf->w / 2;
+                    lvlDst.y = 8;
+                    lvlDst.w = lvlSurf->w;
+                    lvlDst.h = lvlSurf->h;
+                    SDL_RenderCopy(renderer, lvlTex, NULL, &lvlDst);
+                    SDL_FreeSurface(lvlSurf);
+                    SDL_DestroyTexture(lvlTex);
+                }
+            }
+
             SDL_RenderPresent(renderer);
             SDL_Delay(16);
         }
@@ -844,9 +963,7 @@ cleanup:
 
     {
         int i, f;
-        if (bg.img[0]) SDL_DestroyTexture(bg.img[0]);
-        if (bg.img[1]) SDL_DestroyTexture(bg.img[1]);
-        if (bg.img[2]) SDL_DestroyTexture(bg.img[2]);
+        { int _bi; for (_bi = 0; _bi < 8; _bi++) if (bg.img[_bi]) SDL_DestroyTexture(bg.img[_bi]); }
         if (bg.guide.image)        SDL_DestroyTexture(bg.guide.image);
         if (bg.commentJouer.image) SDL_DestroyTexture(bg.commentJouer.image);
         for (i = 0; i < taille; i++) {
