@@ -124,12 +124,14 @@ int main(int argc, char *argv[])
                 Mix_HaltMusic();
                 if (!initPlayerMenu(&playerMenu, menu.window, menu.renderer)) {
                     state = STATE_MENU;
-                    if (menu.music) Mix_PlayMusic(menu.music, -1); continue;
+                    if (menu.music) Mix_PlayMusic(menu.music, -1);
+                    continue;
                 }
                 if (!loadPlayerMenuResources(&playerMenu)) {
                     cleanupPlayerMenu(&playerMenu);
                     state = STATE_MENU;
-                    if (menu.music) Mix_PlayMusic(menu.music, -1); continue;
+                    if (menu.music) Mix_PlayMusic(menu.music, -1);
+                    continue;
                 }
                 playerMenuInitialized = true;
             }
@@ -139,7 +141,8 @@ int main(int argc, char *argv[])
                 if (goToScore) { playerScore = playerMenu.playerScore; state = STATE_SCORES; break; }
                 if (e.type == SDL_KEYDOWN && e.key.repeat == 0 && e.key.keysym.sym == SDLK_ESCAPE) {
                     state = STATE_MENU;
-                    if (menu.music) Mix_PlayMusic(menu.music, -1); break;
+                    if (menu.music) Mix_PlayMusic(menu.music, -1);
+                    break;
                 }
             }
             if (state != STATE_PLAYER) {
