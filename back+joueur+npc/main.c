@@ -91,10 +91,16 @@ static void handleObstacleCollision(Player *p, Platform platforms[], int taille,
     for (i = 0; i < taille; i++) {
         if (platforms[i].destroyed) continue;
         
-        obstacleScreenRect.x = platforms[i].position.x - (int)bg->camera_pos.x;
-        obstacleScreenRect.y = platforms[i].position.y - (int)bg->camera_pos.y;
-        obstacleScreenRect.w = platforms[i].position.w;
-        obstacleScreenRect.h = platforms[i].position.h;
+        {
+            int marginX = platforms[i].position.w / 6;
+            int marginY = platforms[i].position.h / 8;
+            obstacleScreenRect.x = platforms[i].position.x - (int)bg->camera_pos.x + marginX;
+            obstacleScreenRect.y = platforms[i].position.y - (int)bg->camera_pos.y + marginY;
+            obstacleScreenRect.w = platforms[i].position.w - marginX * 2;
+            obstacleScreenRect.h = platforms[i].position.h - marginY * 2;
+            if (obstacleScreenRect.w < 1) obstacleScreenRect.w = 1;
+            if (obstacleScreenRect.h < 1) obstacleScreenRect.h = 1;
+        }
         
         if (rectsOverlap(playerRect, obstacleScreenRect)) {
             
@@ -111,18 +117,26 @@ static void handleObstacleCollision(Player *p, Platform platforms[], int taille,
             if (overlapBottom< minOverlap) { minOverlap = overlapBottom; collisionSide = 3; }
             
             switch(collisionSide) {
-                case 0: p->x = obstacleScreenRect.x - p->w; p->vitesse = 0; break;
-                case 1: p->x = obstacleScreenRect.x + obstacleScreenRect.w; p->vitesse = 0; break;
-                case 2: p->y = obstacleScreenRect.y - p->h; p->vy = 0; p->onGround = 1; break;
-                case 3: p->y = obstacleScreenRect.y + obstacleScreenRect.h; if (p->vy > 0) p->vy = 0; break;
+                case 0: p->x = (float)(obstacleScreenRect.x - p->w - 1); if (p->vitesse < 0) p->vitesse = 0; break;
+                case 1: p->x = (float)(obstacleScreenRect.x + obstacleScreenRect.w + 1); if (p->vitesse > 0) p->vitesse = 0; break;
+                case 2: p->y = (float)(obstacleScreenRect.y - p->h); p->vy = 0; p->onGround = 1; break;
+                case 3: p->y = (float)(obstacleScreenRect.y + obstacleScreenRect.h); if (p->vy > 0) p->vy = 0; break;
             }
             
             p->hp -= OBSTACLE_DAMAGE;
             if (p->hp < 0) p->hp = 0;
             *invTimer = INVINCIBILITY_FRAMES;
             
-            float kbDir = (p->x + p->w/2 < obstacleScreenRect.x + obstacleScreenRect.w/2) ? -1 : 1;
-            p->x += kbDir * OBSTACLE_KNOCKBACK;
+            float kbDir = (p->x + p->w/2 < obstacleScreenRect.x + obstacleScreenRect.w/2) ? -1.0f : 1.0f;
+            float newX = p->x + kbDir * OBSTACLE_KNOCKBACK;
+            if (kbDir < 0) {
+                if (newX + p->w > obstacleScreenRect.x)
+                    newX = (float)(obstacleScreenRect.x - p->w - 1);
+            } else {
+                if (newX < obstacleScreenRect.x + obstacleScreenRect.w)
+                    newX = (float)(obstacleScreenRect.x + obstacleScreenRect.w + 1);
+            }
+            p->x = newX;
             
             if (p->x < 0) p->x = 0;
             if (p->x > SCREEN_W - p->w) p->x = SCREEN_W - p->w;
@@ -746,6 +760,22 @@ int main(int argc, char *argv[])
                 p2.animFrame = 0;
                 SDL_Rect playerRect = { (int)p2.x, (int)p2.y, p2.w, p2.h };
                 playerAttackEnemy(&gameNPC, &playerRect, bg.camera_pos.x, bg.camera_pos.y, &p2.score);
+            }
+
+            if (keys[cfg1.kick] && !p1.isAttacking && !p1.isKicking && !p1.isShooting && p1.actionTimer == 0) {
+                p1.isKicking   = 1;
+                p1.actionTimer = 20;
+                p1.vitesse     = 0;
+                p1.animState   = ANIM_KICK;
+                p1.animFrame   = 0;
+            }
+
+            if (keys[cfg2.kick] && !p2.isAttacking && !p2.isKicking && !p2.isShooting && p2.actionTimer == 0) {
+                p2.isKicking   = 1;
+                p2.actionTimer = 20;
+                p2.vitesse     = 0;
+                p2.animState   = ANIM_KICK;
+                p2.animFrame   = 0;
             }
 
             if (keys[cfg1.shoot] && !p1.isAttacking && !p1.isKicking && !p1.isShooting && p1.actionTimer == 0 && shootCdP1 == 0) {
