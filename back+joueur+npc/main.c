@@ -11,6 +11,7 @@
 #include "player.h"
 #include "menu.h"
 #include "npc.h"
+#include "minimap.h"
 
 #define JOUEUR_H            300
 #define JOUEUR_W            100
@@ -601,6 +602,11 @@ int main(int argc, char *argv[])
     Player        p1, p2;
     MenuResult    menuRes;
     float         groundEcran;
+    Minimap      *minimap           = NULL;
+    ShakeState    shake             = {0, 0, 0, 0};
+    MinimapEnemy  minimapEnemies[MINIMAP_MAX_ENEMIES];
+    int           worldH            = 0;
+    char          minimapPath[64];
 
     srand(time(NULL));
 
@@ -642,6 +648,17 @@ int main(int argc, char *argv[])
                                1, screenW, screenH);
     worldW = bg.partW * bg.imgCount;
     if (worldW < screenW) worldW = screenW;
+
+    worldH = bg.partH;
+    if (worldH < screenH) worldH = screenH;
+
+    /* minimap — top-right corner */
+    snprintf(minimapPath, sizeof(minimapPath), "back/level%d_mini.png", currentLevel);
+    {
+        SDL_Rect mpos = { screenW - MINIMAP_WIDTH - 10, 10,
+                          MINIMAP_WIDTH, MINIMAP_HEIGHT };
+        minimap = createMinimap(renderer, minimapPath, mpos);
+    }
     
     printf("World width: %d, Platforms: %d\n", worldW, taille);
 
@@ -721,6 +738,16 @@ int main(int argc, char *argv[])
                         ww = bg.partW * bg.imgCount;
                         if (ww < screenW) ww = screenW;
                         worldW = ww;
+                        worldH = bg.partH;
+                        if (worldH < screenH) worldH = screenH;
+                        freeMinimap(minimap);
+                        snprintf(minimapPath, sizeof(minimapPath),
+                                 "back/level%d_mini.png", currentLevel);
+                        {
+                            SDL_Rect mpos = { screenW - MINIMAP_WIDTH - 10, 10,
+                                              MINIMAP_WIDTH, MINIMAP_HEIGHT };
+                            minimap = createMinimap(renderer, minimapPath, mpos);
+                        }
                         shootCdP1 = 0; shootCdP2 = 0;
                         prevTick = SDL_GetTicks();
                     }
@@ -836,11 +863,21 @@ int main(int argc, char *argv[])
             bgX = bg.camera_pos.x;
             bgY = (int)bg.camera_pos.y;
 
-            handleObstacleCollision(&p1, platforms, taille, &invObstacleP1, groundEcran, &bg);
-            handleObstacleCollision(&p2, platforms, taille, &invObstacleP2, groundEcran, &bg);
+            {
+                int hp1before = p1.hp;
+                int hp2before = p2.hp;
+                handleObstacleCollision(&p1, platforms, taille, &invObstacleP1, groundEcran, &bg);
+                handleObstacleCollision(&p2, platforms, taille, &invObstacleP2, groundEcran, &bg);
+                if (p1.hp < hp1before) triggerShake(&shake);
+                if (p2.hp < hp2before) triggerShake(&shake);
+            }
 
-            resolvePlayerCombat(&p1, &p2, &invP2);
-            resolvePlayerCombat(&p2, &p1, &invP1);
+            {
+                int hp1b = p1.hp, hp2b = p2.hp;
+                resolvePlayerCombat(&p1, &p2, &invP2);
+                resolvePlayerCombat(&p2, &p1, &invP1);
+                if (p2.hp < hp2b || p1.hp < hp1b) triggerShake(&shake);
+            }
 
             gererTemps(&timeLeft, &lastTime);
             if (timeLeft < 0) timeLeft = 0;
@@ -854,7 +891,28 @@ int main(int argc, char *argv[])
 
             {
                 SDL_Rect playerRect = { (int)p1.x, (int)p1.y, p1.w, p1.h };
+                int hpBefore = p1.hp;
                 NPC_update(&gameNPC, &playerRect, &p1.hp, &p1.score, bg.camera_pos.x, bg.camera_pos.y);
+                if (p1.hp < hpBefore) triggerShake(&shake);
+            }
+
+            /* update shake animation */
+            updateShake(&shake);
+
+            /* build enemy array for minimap and update dot positions */
+            {
+                int ec = 0;
+                for (int _i = 0; _i < gameNPC.enemyCnt && ec < MINIMAP_MAX_ENEMIES; _i++) {
+                    minimapEnemies[ec].x      = gameNPC.enemies[_i].x;
+                    minimapEnemies[ec].y      = gameNPC.enemies[_i].y;
+                    minimapEnemies[ec].active = gameNPC.enemies[_i].active &&
+                                               !gameNPC.enemies[_i].dying;
+                    ec++;
+                }
+                updateMinimap(minimap,
+                    (int)p1.x + bg.camera_pos.x, (int)p1.y + (int)bg.camera_pos.y,
+                    (int)p2.x + bg.camera_pos.x, (int)p2.y + (int)bg.camera_pos.y,
+                    worldW, worldH);
             }
 
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -863,7 +921,9 @@ int main(int argc, char *argv[])
             afficherBackgroundEtElements(renderer, &bg, platforms, taille,
                                          font, dummyColor, timeLeft,
                                          (p1.vies > p2.vies) ? p1.vies : p2.vies,
-                                         bgX, bgY, screenW, screenH, MODE_MONO);
+                                         bgX + shake.offsetX,
+                                         bgY + shake.offsetY,
+                                         screenW, screenH, MODE_MONO);
 
             NPC_draw(&gameNPC, bg.camera_pos.x, bg.camera_pos.y);
 
@@ -972,6 +1032,10 @@ int main(int argc, char *argv[])
                 }
             }
 
+            /* minimap — always on top, rendered last */
+            renderMinimap(renderer, minimap, minimapEnemies, gameNPC.enemyCnt,
+                          worldW, worldH);
+
             SDL_RenderPresent(renderer);
             SDL_Delay(16);
         }
@@ -984,6 +1048,7 @@ int main(int argc, char *argv[])
 
 cleanup:
     NPC_clean(&gameNPC);
+    freeMinimap(minimap);
 
     if (batarang) SDL_DestroyTexture(batarang);
     if (p1.sprite.sheetRight) SDL_DestroyTexture(p1.sprite.sheetRight);
