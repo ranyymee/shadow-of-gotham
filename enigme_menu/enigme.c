@@ -128,40 +128,28 @@ static void shuffleQuestions(Enigme *e)
 
 /* ============================================================
    setupLayout — 100% based on SCR_W / SCR_H
-   ─────────────────────────────────────────────────────────
-   HUD band  : top 8% of screen height  (min 60px, max 90px)
-   Safe margin: 2% of width on left/right
-
-   Content area (below HUD):
-     Left 30%  → question card (centered vertically)
-     Right 70% → 3 answer cards in 2-col grid
-                  top-left, top-right, bottom-center
    ============================================================ */
 static void setupLayout(Enigme *e)
 {
     int W = SCR_W;
     int H = SCR_H;
 
-    /* ── HUD height: 8% of screen, clamped 60-90px ────── */
     int hudH = H * 8 / 100;
     if (hudH < 60)  hudH = 60;
     if (hudH > 90)  hudH = 90;
     e->hudH = hudH;
 
-    /* ── Safe horizontal margin: 2% each side ──────────── */
     int marginX = W * 2 / 100;
     if (marginX < 20) marginX = 20;
 
-    /* ── Content area ────────────────────────────────────── */
     int areaX = marginX;
     int areaY = hudH + 8;
     int areaW = W - 2 * marginX;
     int areaH = H - areaY - 10;
 
-    /* ── Question card: left 28% of area ─────────────────── */
     int cardW = areaW * 28 / 100;
-    int cardH = cardW * 3 / 2;          /* aspect ratio 2:3 */
-    if (cardH > areaH * 90 / 100)       /* never taller than 90% of area */
+    int cardH = cardW * 3 / 2;
+    if (cardH > areaH * 90 / 100)
         cardH = areaH * 90 / 100;
     int cardX = areaX;
     int cardY = areaY + (areaH - cardH) / 2;
@@ -169,18 +157,15 @@ static void setupLayout(Enigme *e)
     e->cardRect  = (SDL_Rect){ cardX, cardY, cardW, cardH };
     e->cardAngle = -6.0;
 
-    /* ── Right zone for the 3 answer cards ───────────────── */
-    int gap    = areaW * 2 / 100;       /* 2% gap between question and answers */
+    int gap    = areaW * 2 / 100;
     int rightX = areaX + cardW + gap;
     int rightW = areaX + areaW - rightX;
 
-    /* prop card size: 2-column, each ~32% of rightW (narrower) */
     int propW = rightW * 32 / 100;
-    int propH = propW * 17 / 10;        /* aspect ratio ~1:1.7  (taller) */
+    int propH = propW * 17 / 10;
     if (propH > areaH * 48 / 100)
         propH = areaH * 48 / 100;
 
-    /* gap between the two columns */
     int colGap = rightW - 2 * propW;
     if (colGap < 10) colGap = 10;
 
@@ -189,30 +174,24 @@ static void setupLayout(Enigme *e)
     int rowTop = areaY + 8;
     int rowBot = areaY + areaH - propH - 8;
 
-    /* prop[0]: top-left */
     e->propRect[0]  = (SDL_Rect){ colL, rowTop, propW, propH };
     e->propAngle[0] = -5.0;
 
-    /* prop[1]: top-right */
     e->propRect[1]  = (SDL_Rect){ colR, rowTop, propW, propH };
     e->propAngle[1] = +5.0;
 
-    /* prop[2]: bottom-center */
     int colC = rightX + (rightW - propW) / 2;
     e->propRect[2]  = (SDL_Rect){ colC, rowBot, propW, propH };
     e->propAngle[2] = -3.0;
 
-    /* ── Chrono bar & bat logo (right 32% of HUD) ─────────── */
     int hudRightStart = W * 68 / 100;
     int hudRightW     = W - marginX - hudRightStart;
 
-    /* bat logo: right-most, square-ish */
     int logoSz = hudH * 85 / 100;
     int logoX  = W - marginX - logoSz;
     int logoY  = (hudH - logoSz) / 2;
     e->batLogoRect = (SDL_Rect){ logoX, logoY, logoSz, logoSz };
 
-    /* chrono bar: left of logo, vertically centered */
     int barH = hudH * 25 / 100;
     if (barH < 10) barH = 10;
     if (barH > 22) barH = 22;
@@ -222,7 +201,6 @@ static void setupLayout(Enigme *e)
     int barY = (hudH - barH) / 2;
     e->chronoRect = (SDL_Rect){ barX, barY, barW, barH };
 
-    /* chrono design image: smaller, vertically centered in HUD */
     int designH = hudH * 55 / 100;
     int designY = (hudH - designH) / 2;
     e->chronoDesignRect = (SDL_Rect){ barX, designY, barW + logoSz + 8, designH };
@@ -237,7 +215,7 @@ void initEnigme(Enigme *e, SDL_Renderer *renderer)
     srand((unsigned)time(NULL));
     memset(e, 0, sizeof(Enigme));
 
-    e->nbQuestionsPool = loadQuestions(e, "questions.txt");
+    e->nbQuestionsPool = loadQuestions(e, "assets/questions.txt");
     if (e->nbQuestionsPool == 0)
         fprintf(stderr, "[ERROR] No questions loaded!\n");
     shuffleQuestions(e);
@@ -258,22 +236,22 @@ void initEnigme(Enigme *e, SDL_Renderer *renderer)
     e->chronoRatio     = 1.0f;
     e->currentSound    = SND_NONE;
 
-    e->bgTexture       = loadTexture("background.png",   renderer);
-    e->cardTexture     = loadTexture("carte.png",         renderer);
-    e->propTexture[0]  = loadTexture("carte.png",         renderer);
-    e->propTexture[1]  = loadTexture("carte.png",         renderer);
-    e->propTexture[2]  = loadTexture("carte.png",         renderer);
-    e->batLogoTex      = loadTexture("BatLogo.png",       renderer);
+    e->bgTexture       = loadTexture("assets/background.png", renderer);
+    e->cardTexture     = loadTexture("assets/carte.png",      renderer);
+    e->propTexture[0]  = loadTexture("assets/carte.png",      renderer);
+    e->propTexture[1]  = loadTexture("assets/carte.png",      renderer);
+    e->propTexture[2]  = loadTexture("assets/carte.png",      renderer);
+    e->batLogoTex      = loadTexture("assets/BatLogo.png",    renderer);
 
-    e->soundBat      = Mix_LoadMUS("bat.mp3");
-    e->soundSuspense = Mix_LoadMUS("suspince.mp3");
-    e->soundCorrect  = Mix_LoadMUS("correct.mp3");
-    e->soundWrong    = Mix_LoadMUS("ghalet.mp3");
+    e->soundBat      = Mix_LoadMUS("assets/bat.mp3");
+    e->soundSuspense = Mix_LoadMUS("assets/suspince.mp3");
+    e->soundCorrect  = Mix_LoadMUS("assets/correct.mp3");
+    e->soundWrong    = Mix_LoadMUS("assets/ghalet.mp3");
 
-    if (!e->soundBat)        fprintf(stderr, "[WARN] bat.mp3 missing\n");
-    if (!e->soundSuspense)   fprintf(stderr, "[WARN] suspince.mp3 missing\n");
-    if (!e->soundCorrect)    fprintf(stderr, "[WARN] correct.mp3 missing\n");
-    if (!e->soundWrong)      fprintf(stderr, "[WARN] ghalet.mp3 missing\n");
+    if (!e->soundBat)      fprintf(stderr, "[WARN] assets/bat.mp3 missing\n");
+    if (!e->soundSuspense) fprintf(stderr, "[WARN] assets/suspince.mp3 missing\n");
+    if (!e->soundCorrect)  fprintf(stderr, "[WARN] assets/correct.mp3 missing\n");
+    if (!e->soundWrong)    fprintf(stderr, "[WARN] assets/ghalet.mp3 missing\n");
 
     playSound(e, SND_BAT);
     setupLayout(e);
@@ -311,7 +289,7 @@ void updateEnigme(Enigme *e)
             e->waitingSuspense = 0;
             e->showResult      = 1;
             e->resultTime      = now;
-            if (e->correct) e->score++;   /* +1 after suspense sound */
+            if (e->correct) e->score++;
             playSound(e, e->correct ? SND_CORRECT : SND_WRONG);
         }
     }
@@ -341,14 +319,13 @@ void updateEnigme(Enigme *e)
         }
     }
 
-    /* Always keep chronoRatio in sync */
     e->chronoRatio = (float)e->chronoSecondes / (float)CHRONO_SECS;
     if (e->chronoRatio < 0.0f) e->chronoRatio = 0.0f;
     if (e->chronoRatio > 1.0f) e->chronoRatio = 1.0f;
 }
 
 /* ============================================================
-   drawChronoBar — fill rect + design image overlay
+   drawChronoBar
    ============================================================ */
 static void drawChronoBar(SDL_Renderer *r, SDL_Texture *designTex,
                            SDL_Rect *barRect, SDL_Rect *designRect, float ratio)
@@ -360,14 +337,11 @@ static void drawChronoBar(SDL_Renderer *r, SDL_Texture *designTex,
     Uint32 now = SDL_GetTicks();
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 
-    /* Background */
     SDL_SetRenderDrawColor(r, 0, 18, 38, 205);
     SDL_RenderFillRect(r, barRect);
-    /* border */
     SDL_SetRenderDrawColor(r, 0, 220, 255, 85);
     SDL_RenderDrawRect(r, barRect);
 
-    /* Colored fill — LEFT-anchored, shrinks rightward like puzzle */
     int fillW = (int)(barRect->w * ratio);
     if (fillW > 0) {
         Uint8 tR, tG;
@@ -377,13 +351,11 @@ static void drawChronoBar(SDL_Renderer *r, SDL_Texture *designTex,
         SDL_Rect fill = { barRect->x, barRect->y, fillW, barRect->h };
         SDL_SetRenderDrawColor(r, tR, tG, 40, 230);
         SDL_RenderFillRect(r, &fill);
-        /* white glow on right edge of fill */
         SDL_SetRenderDrawColor(r, 255, 255, 255, 160);
         SDL_Rect glow = { barRect->x + fillW - 3, barRect->y, 3, barRect->h };
         SDL_RenderFillRect(r, &glow);
     }
 
-    /* Red flash pulse when low */
     if (ratio < 0.25f) {
         float p = 0.5f + 0.5f * sinf((float)now / 180.0f);
         SDL_SetRenderDrawColor(r, 255, 60, 0, (Uint8)(p * 70));
@@ -393,7 +365,6 @@ static void drawChronoBar(SDL_Renderer *r, SDL_Texture *designTex,
                               barRect->x + fillW, barRect->y + barRect->h);
     }
 
-    /* Corner accents like puzzle */
     int cl = 9;
     SDL_SetRenderDrawColor(r, 0, 220, 255, 140);
     SDL_RenderDrawLine(r, barRect->x, barRect->y, barRect->x+cl, barRect->y);
@@ -419,7 +390,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
     int W = SCR_W;
     int H = SCR_H;
 
-    /* Background */
     if (e->bgTexture) SDL_RenderCopy(renderer, e->bgTexture, NULL, NULL);
 
     if (e->questionIndex >= NB_QUESTIONS) {
@@ -429,9 +399,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
         return;
     }
 
-    /* =========================================================
-       HUD band
-       ========================================================= */
     int hudH    = e->hudH;
     int marginX = W * 2 / 100;
     if (marginX < 20) marginX = 20;
@@ -447,7 +414,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
         SDL_Color yellow = {255, 220,   0, 255};
         char buf[64];
 
-        /* SCORE — left-aligned, vertically centered in HUD */
         snprintf(buf, sizeof(buf), "SCORE: %d", e->score);
         SDL_Surface *s = TTF_RenderUTF8_Blended(font, buf, cyan);
         if (s) {
@@ -457,7 +423,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
             SDL_FreeSurface(s);
         }
 
-        /* LEVEL — style SELECT A PUZZLE: zoom pulse + arrows + glow */
         {
             Uint32 now2 = SDL_GetTicks();
             float zoom2 = 1.0f + 0.08f * sinf((float)now2 / 700.0f);
@@ -495,7 +460,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
             }
         }
 
-        /* Question counter — below LEVEL */
         snprintf(buf, sizeof(buf), "%02d/%d", e->questionIndex+1, NB_QUESTIONS);
         s = TTF_RenderUTF8_Blended(fontSmall, buf, yellow);
         if (s) {
@@ -505,48 +469,39 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
             SDL_FreeSurface(s);
         }
 
-        /* Bat logo — shrinks + pulses as time runs out */
         if (e->batLogoTex) {
             float ratio  = e->chronoRatio;
             Uint32 nowB  = SDL_GetTicks();
             int fullSz   = e->batLogoRect.w;
-            /* size shrinks from 100% to 40% as time runs out */
             int sz = (int)(fullSz * (0.4f + 0.6f * ratio));
             int cx = e->batLogoRect.x + fullSz / 2;
             int cy = e->batLogoRect.y + fullSz / 2;
             SDL_Rect lr = { cx - sz/2, cy - sz/2, sz, sz };
-            /* pulse speed increases as time runs out */
             float speed = 300.0f + (1.0f - ratio) * 1200.0f;
             float pulse = 0.5f + 0.5f * sinf((float)nowB / speed);
-            /* brightness: full when time ok, flashes red when low */
+
             if (ratio > 0.25f) {
                 Uint8 mod = (Uint8)(180 + pulse * 75);
                 SDL_SetTextureColorMod(e->batLogoTex, mod, mod, mod);
                 SDL_SetTextureAlphaMod(e->batLogoTex, 255);
             } else {
-                /* red flash when critical */
                 Uint8 r2 = (Uint8)(200 + pulse * 55);
                 Uint8 gb = (Uint8)(pulse * 80);
                 SDL_SetTextureColorMod(e->batLogoTex, r2, gb, gb);
                 SDL_SetTextureAlphaMod(e->batLogoTex, (Uint8)(180 + pulse * 75));
             }
             SDL_RenderCopy(renderer, e->batLogoTex, NULL, &lr);
-            /* reset modulation */
             SDL_SetTextureColorMod(e->batLogoTex, 255, 255, 255);
             SDL_SetTextureAlphaMod(e->batLogoTex, 255);
         }
     }
 
-    /* Chrono bar */
     {
         float ratio = (float)e->chronoSecondes / (float)CHRONO_SECS;
         drawChronoBar(renderer, e->chronoDesignTex,
                       &e->chronoRect, &e->chronoDesignRect, ratio);
     }
 
-    /* =========================================================
-       Question card — left zone
-       ========================================================= */
     QuestionData *q     = &e->questions[e->ordreJeu[e->questionIndex]];
     SDL_Color     black = {0, 0, 0, 255};
 
@@ -559,7 +514,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
     }
 
-    /* Text zone — shifted left inside card */
     SDL_Rect qZone = {
         e->cardRect.x + e->cardRect.w / 8,
         e->cardRect.y + e->cardRect.h / 7,
@@ -568,9 +522,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
     };
     renderTextCentered(renderer, fontTiny, q->question, black, &qZone);
 
-    /* =========================================================
-       3 Answer cards
-       ========================================================= */
     for (int i = 0; i < NB_PROPS; i++) {
 
         if (e->propTexture[i])
@@ -620,9 +571,6 @@ void renderEnigme(Enigme *e, SDL_Renderer *renderer,
         renderTextCentered(renderer, fontSmall, q->prop[i], black, &tZone);
     }
 
-    /* =========================================================
-       Result banner — bottom center
-       ========================================================= */
     if (e->showResult || e->chronoExpire) {
         const char *msg;
         SDL_Color   col;
@@ -694,7 +642,6 @@ void handleEnigmeEvent(Enigme *e, SDL_Event *event)
         QuestionData *q = &e->questions[e->ordreJeu[e->questionIndex]];
         e->selected        = choix;
         e->correct         = (choix == q->bonneReponse);
-        /* score incremented after suspense, in updateEnigme */
         e->waitingSuspense = 1;
         e->suspenseTime    = SDL_GetTicks();
         playSound(e, SND_SUSPENSE);

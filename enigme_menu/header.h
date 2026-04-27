@@ -63,11 +63,14 @@
 #define MAX_DUST    70
 
 /* ─────────────────────────────────────────────────────────────────────────
-   PUZZLE SELECTION
+   PUZZLE SELECTION  — paths relative to executable (assets/ subfolder)
    ───────────────────────────────────────────────────────────────────────── */
 #define NUM_PUZZLES  4
 static const char *PUZZLE_IMAGES[NUM_PUZZLES] = {
-    "puzzle.png", "puzzle1.png", "puzzle2.png", "puzzle3.png"
+    "assets/puzzle.png",
+    "assets/puzzle1.png",
+    "assets/puzzle2.png",
+    "assets/puzzle3.png"
 };
 
 /* ─────────────────────────────────────────────────────────────────────────

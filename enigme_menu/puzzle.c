@@ -624,7 +624,7 @@ static void renderWrongFlash(float t){
 int run_puzzle(SDL_Window *win,int puzzleIdx){
     (void)win;
 
-    SDL_Texture *bgTex=IMG_LoadTexture(g_ren,"bg.png");
+    SDL_Texture *bgTex=IMG_LoadTexture(g_ren,"assets/bg.png");
     if(!bgTex){
         bgTex=SDL_CreateTexture(g_ren,SDL_PIXELFORMAT_RGBA8888,SDL_TEXTUREACCESS_TARGET,WIN_W,WIN_H);
         SDL_SetRenderTarget(g_ren,bgTex);

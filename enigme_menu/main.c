@@ -1,8 +1,5 @@
 /*
  * main.c — TACTICAL DECRYPTION ENGINE
- * Menu: no title bar box, clean "SELECT A PUZZLE" with zoom pulse,
- * no side panels.
- * NOTE: globals (g_ren, g_fntBig, etc.) and main() are in mainfarah.c
  */
 
 #include "header.h"
@@ -170,7 +167,7 @@ static void renderHexStrip(Uint32 ticks){
 int run_menu(SDL_Window *win){
     (void)win;
 
-    SDL_Texture *bgTex=loadTex("bg.png");
+    SDL_Texture *bgTex=loadTex("assets/bg.png");
     if(!bgTex) bgTex=makePlaceholder(WIN_W,WIN_H,0,8,18);
 
     SDL_Texture *imgs[NUM_PUZZLES];
