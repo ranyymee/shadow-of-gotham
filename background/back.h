@@ -47,9 +47,10 @@ typedef struct {
 } SDL_TextureWithRect;
 
 typedef struct {
-    SDL_Texture        *img[3];   /* up to 3 part textures (p1/p2/p3 or single bg) */
+    SDL_Texture        *img[8];   /* up to 8 part textures for wide backgrounds     */
     int                 imgCount; /* number of textures actually loaded (1 or 3)    */
-    int                 partW;    /* width of each part texture (all parts same W)  */
+    int                 partW;    /* width of each part texture (slice size)        */
+    int                 partWReal[8]; /* real width of each slice (last may be smaller) */
     int                 partH;    /* height of each part texture                    */
     float               zoom;     /* render scale: 1.0 = normal, <1.0 = zoom out   */
     SDL_Rect            posimg;

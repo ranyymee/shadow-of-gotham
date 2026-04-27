@@ -15,27 +15,102 @@ void initBackgroundAndPlatforms(SDL_Renderer *renderer, Background *bg,
 
     bg->posimg.x = 0;
     bg->posimg.y = 0;
-    bg->img[0]   = NULL;
-    bg->img[1]   = NULL;
-    bg->img[2]   = NULL;
+    {
+        int _bi;
+        for (_bi = 0; _bi < 8; _bi++) { bg->img[_bi] = NULL; bg->partWReal[_bi] = 0; }
+    }
     bg->imgCount = 1;
     bg->partW    = 0;
     bg->partH    = 0;
     bg->zoom     = 1.0f;
 
-    bg->img[0] = IMG_LoadTexture(renderer, "back/bg.png");
-    if (!bg->img[0]) {
-        printf("Erreur chargement background : %s\n", IMG_GetError());
-        exit(EXIT_FAILURE);
+    /*
+     * Load background with automatic slicing for images wider than MAX_TEX_W.
+     * We load the full image as a surface, then blit strips into sub-surfaces
+     * and upload each strip as a separate texture stored in bg->img[0..2].
+     * bg->partW = width of each strip, bg->imgCount = number of strips.
+     */
+    {
+#define MAX_TEX_W 4096
+        char bgPath[32];
+        SDL_Surface *fullSurf;
+        int p, numParts, sliceW;
+
+        if (level == 1)      snprintf(bgPath, sizeof(bgPath), "back/level1.png");
+        else if (level == 2) snprintf(bgPath, sizeof(bgPath), "back/level2.png");
+        else                 snprintf(bgPath, sizeof(bgPath), "back/level3.png");
+
+        fullSurf = IMG_Load(bgPath);
+        if (!fullSurf) {
+            printf("Erreur chargement background %s : %s\n", bgPath, IMG_GetError());
+            exit(EXIT_FAILURE);
+        }
+
+        imgW = fullSurf->w;
+        imgH = fullSurf->h;
+
+        /* How many slices of MAX_TEX_W do we need? (max 3 = bg->img capacity) */
+        numParts = (imgW + MAX_TEX_W - 1) / MAX_TEX_W;
+        if (numParts > 8) numParts = 8;
+        sliceW   = (imgW + numParts - 1) / numParts;
+        if (sliceW > MAX_TEX_W) sliceW = MAX_TEX_W;
+
+        bg->imgCount = numParts;
+        bg->partW    = sliceW;
+        bg->partH    = imgH;
+
+        /* Zoom fixe par level:
+         * level 1 : 1082px hauteur ~ ecran -> zoom 1.0
+         * level 2/3 : ~4500px hauteur -> zoom 0.32 pour voir le sol + scroller */
+        if (level == 1)
+            bg->zoom = 1.0f;
+        else
+            bg->zoom = 0.32f;
+
+        for (p = 0; p < numParts; p++) {
+            SDL_Surface *part;
+            SDL_Rect srcRect;
+            int thisW = sliceW;
+            if (p * sliceW + thisW > imgW) thisW = imgW - p * sliceW;
+
+            srcRect.x = p * sliceW;
+            srcRect.y = 0;
+            srcRect.w = thisW;
+            srcRect.h = imgH;
+
+            part = SDL_CreateRGBSurface(0, thisW, imgH,
+                                        fullSurf->format->BitsPerPixel,
+                                        fullSurf->format->Rmask,
+                                        fullSurf->format->Gmask,
+                                        fullSurf->format->Bmask,
+                                        fullSurf->format->Amask);
+            if (!part) {
+                printf("Erreur SDL_CreateRGBSurface part %d : %s\n", p, SDL_GetError());
+                SDL_FreeSurface(fullSurf);
+                exit(EXIT_FAILURE);
+            }
+            SDL_BlitSurface(fullSurf, &srcRect, part, NULL);
+            bg->img[p] = SDL_CreateTextureFromSurface(renderer, part);
+            bg->partWReal[p] = thisW;
+            SDL_FreeSurface(part);
+            if (!bg->img[p]) {
+                printf("Erreur texture part %d : %s\n", p, SDL_GetError());
+                SDL_FreeSurface(fullSurf);
+                exit(EXIT_FAILURE);
+            }
+        }
+        SDL_FreeSurface(fullSurf);
+#undef MAX_TEX_W
     }
-    SDL_QueryTexture(bg->img[0], NULL, NULL, &imgW, &imgH);
-    bg->partW = imgW;
-    bg->partH = imgH;
     bg->camera_pos.x = 0;
-    if (imgH > screenH)
-        bg->camera_pos.y = imgH - screenH;
-    else
-        bg->camera_pos.y = 0;
+    /* Start camera at bottom so the ground/street is visible */
+    {
+        int scaledH = (int)(imgH * bg->zoom);
+        if (scaledH > screenH)
+            bg->camera_pos.y = scaledH - screenH;
+        else
+            bg->camera_pos.y = 0;
+    }
     bg->camera_pos.w = screenW;
     bg->camera_pos.h = screenH;
     bg->direction = 0;
@@ -85,8 +160,7 @@ void initBackgroundAndPlatforms(SDL_Renderer *renderer, Background *bg,
          * bg.png is 15266px wide. Ground sits at ~82% of imgH.
          * We place obstcl1 and levl1 at 5 positions across the world.
          */
-        int camTop  = (imgH > screenH) ? (imgH - screenH) : 0;
-        int streetY = camTop + screenH * 90 / 100;
+        int streetY = imgH * 90 / 100;
 
         /* X positions matching the visual obstacles in bg.png */
         int posX[5];
@@ -143,65 +217,112 @@ void initBackgroundAndPlatforms(SDL_Renderer *renderer, Background *bg,
         }
     } else if (level == 2) {
         /*
-         * Level 2 – Dark Carnival, divided into 3 parts:
-         *
-         * PART 1 (0 – 33% of world width):
-         *   obstcl2 at  8%
-         *   obsctl3 at 18%
-         *   levl2   at 28%
-         *
-         * PART 2 (33 – 66% of world width):
-         *   obstcl2 at 40%
-         *   levl2   at 50%
-         *   obsctl3 at 60%
-         *
-         * PART 3 (66 – 100% of world width):
-         *   obsctl3 at 72%
-         *   obstcl2 at 82%
-         *   levl2   at 92%
+         * Level 2 – same structure as level 1:
+         * 5 positions at 7%, 27%, 47%, 67%, 87%
+         * obstcl2 (diviseur /2) aux positions 0,2,4
+         * levl2   (diviseur /4) aux positions 1,3
          */
-        int camTop2  = (imgH > screenH) ? (imgH - screenH) : 0;
-        int streetY2 = camTop2 + screenH * 90 / 100;
+        int k;
+        int streetY2 = imgH * 90 / 100;
+        int posX2[5];
+        posX2[0] = imgW *  7 / 100;
+        posX2[1] = imgW * 27 / 100;
+        posX2[2] = imgW * 47 / 100;
+        posX2[3] = imgW * 67 / 100;
+        posX2[4] = imgW * 87 / 100;
 
-        /* ---- helper macro to add one platform ---- */
-        #define ADD_PLATFORM(imgpath, divisorW, divisorH, worldX)               \
-        do {                                                                      \
-            if (*taille < MAX_PLATFORMS) {                                        \
-                SDL_Surface *_s = IMG_Load(imgpath);                              \
-                if (_s) {                                                         \
-                    int _nw = _s->w / (divisorW);                                 \
-                    int _nh = _s->h / (divisorH);                                 \
-                    platforms[*taille].image      = SDL_CreateTextureFromSurface(renderer, _s); \
-                    platforms[*taille].isAnimated = 0;                            \
-                    platforms[*taille].type       = PLATFORM_FIXE;                \
-                    platforms[*taille].destroyed  = 0;                            \
-                    platforms[*taille].hp         = 0;                            \
-                    platforms[*taille].position.w = _nw;                          \
-                    platforms[*taille].position.h = _nh;                          \
-                    platforms[*taille].position.x = (worldX) - _nw / 2;          \
-                    platforms[*taille].position.y = streetY2 - _nh;              \
-                    SDL_FreeSurface(_s);                                          \
-                    (*taille)++;                                                  \
-                } else printf("Erreur %s : %s\n", imgpath, IMG_GetError());      \
-            }                                                                     \
-        } while (0)
+        /* obstcl2 at positions 0, 2, 4 */
+        for (k = 0; k < 3 && *taille < MAX_PLATFORMS; k++) {
+            SDL_Surface *s = IMG_Load("obstacle/obstcl2.png");
+            if (s) {
+                int newW = s->w / 2;
+                int newH = s->h / 2;
+                platforms[*taille].image      = SDL_CreateTextureFromSurface(renderer, s);
+                platforms[*taille].isAnimated = 0;
+                platforms[*taille].type       = PLATFORM_FIXE;
+                platforms[*taille].destroyed  = 0;
+                platforms[*taille].hp         = 0;
+                platforms[*taille].position.w = newW;
+                platforms[*taille].position.h = newH;
+                platforms[*taille].position.x = posX2[k * 2] - newW / 2;
+                platforms[*taille].position.y = streetY2 - newH;
+                SDL_FreeSurface(s);
+                (*taille)++;
+            }
+        }
+        /* levl2 at positions 1, 3 */
+        for (k = 0; k < 2 && *taille < MAX_PLATFORMS; k++) {
+            SDL_Surface *s = IMG_Load("obstacle/levl2.png");
+            if (s) {
+                int newW = s->w / 4;
+                int newH = s->h / 4;
+                platforms[*taille].image      = SDL_CreateTextureFromSurface(renderer, s);
+                platforms[*taille].isAnimated = 0;
+                platforms[*taille].type       = PLATFORM_FIXE;
+                platforms[*taille].destroyed  = 0;
+                platforms[*taille].hp         = 0;
+                platforms[*taille].position.w = newW;
+                platforms[*taille].position.h = newH;
+                platforms[*taille].position.x = posX2[k * 2 + 1] - newW / 2;
+                platforms[*taille].position.y = streetY2 - newH;
+                SDL_FreeSurface(s);
+                (*taille)++;
+            }
+        }
+    } else if (level == 3) {
+        /*
+         * Level 3 – same structure as level 1:
+         * 5 positions at 7%, 27%, 47%, 67%, 87%
+         * obsctl3 (diviseur /2) aux positions 0,2,4
+         * levl2   (diviseur /4) aux positions 1,3
+         */
+        int k;
+        int streetY3 = imgH * 90 / 100;
+        int posX3[5];
+        posX3[0] = imgW *  7 / 100;
+        posX3[1] = imgW * 27 / 100;
+        posX3[2] = imgW * 47 / 100;
+        posX3[3] = imgW * 67 / 100;
+        posX3[4] = imgW * 87 / 100;
 
-        /* --- PART 1 (0–33%) --- */
-        ADD_PLATFORM("obstacle/obstcl2.png", 2, 2, imgW *  8 / 100);
-        ADD_PLATFORM("obstacle/obsctl3.png", 2, 2, imgW * 18 / 100);
-        ADD_PLATFORM("obstacle/levl2.png",   4, 4, imgW * 28 / 100);
-
-        /* --- PART 2 (33–66%) --- */
-        ADD_PLATFORM("obstacle/obstcl2.png", 2, 2, imgW * 40 / 100);
-        ADD_PLATFORM("obstacle/levl2.png",   4, 4, imgW * 50 / 100);
-        ADD_PLATFORM("obstacle/obsctl3.png", 2, 2, imgW * 60 / 100);
-
-        /* --- PART 3 (66–100%) --- */
-        ADD_PLATFORM("obstacle/obsctl3.png", 2, 2, imgW * 72 / 100);
-        ADD_PLATFORM("obstacle/obstcl2.png", 2, 2, imgW * 82 / 100);
-        ADD_PLATFORM("obstacle/levl2.png",   4, 4, imgW * 92 / 100);
-
-        #undef ADD_PLATFORM
+        /* obsctl3 at positions 0, 2, 4 */
+        for (k = 0; k < 3 && *taille < MAX_PLATFORMS; k++) {
+            SDL_Surface *s = IMG_Load("obstacle/obsctl3.png");
+            if (s) {
+                int newW = s->w / 2;
+                int newH = s->h / 2;
+                platforms[*taille].image      = SDL_CreateTextureFromSurface(renderer, s);
+                platforms[*taille].isAnimated = 0;
+                platforms[*taille].type       = PLATFORM_FIXE;
+                platforms[*taille].destroyed  = 0;
+                platforms[*taille].hp         = 0;
+                platforms[*taille].position.w = newW;
+                platforms[*taille].position.h = newH;
+                platforms[*taille].position.x = posX3[k * 2] - newW / 2;
+                platforms[*taille].position.y = streetY3 - newH;
+                SDL_FreeSurface(s);
+                (*taille)++;
+            }
+        }
+        /* levl2 at positions 1, 3 */
+        for (k = 0; k < 2 && *taille < MAX_PLATFORMS; k++) {
+            SDL_Surface *s = IMG_Load("obstacle/levl2.png");
+            if (s) {
+                int newW = s->w / 4;
+                int newH = s->h / 4;
+                platforms[*taille].image      = SDL_CreateTextureFromSurface(renderer, s);
+                platforms[*taille].isAnimated = 0;
+                platforms[*taille].type       = PLATFORM_FIXE;
+                platforms[*taille].destroyed  = 0;
+                platforms[*taille].hp         = 0;
+                platforms[*taille].position.w = newW;
+                platforms[*taille].position.h = newH;
+                platforms[*taille].position.x = posX3[k * 2 + 1] - newW / 2;
+                platforms[*taille].position.y = streetY3 - newH;
+                SDL_FreeSurface(s);
+                (*taille)++;
+            }
+        }
     }
 }
 
@@ -293,7 +414,9 @@ void gererScrollingDeuxJoueurs(SDL_Event event,
     keys = SDL_GetKeyboardState(NULL);
 
     if (bg1->img[0]) {
-        imgW = bg1->partW * bg1->imgCount;
+        int _pi;
+        imgW = 0;
+        for (_pi = 0; _pi < bg1->imgCount; _pi++) imgW += bg1->partWReal[_pi];
         imgH = bg1->partH;
     }
 
@@ -408,9 +531,9 @@ void gererGuideEtClic(SDL_Event event, GuideButton *guide,
         }
     }
     if (event.type == SDL_KEYDOWN) {
-        if (event.key.keysym.sym == SDLK_g || event.key.keysym.sym == SDLK_h)
+        if (event.key.keysym.sym == SDLK_g)
             *afficherCommentJouer = !(*afficherCommentJouer);
-        if (event.key.keysym.sym == SDLK_r || event.key.keysym.sym == SDLK_ESCAPE)
+        if (event.key.keysym.sym == SDLK_r)
             *afficherCommentJouer = 0;
     }
 }
@@ -439,8 +562,12 @@ void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
 
     (void)textColor;
 
-    /* --- Compute total world size and scaled dimensions --- */
-    imgW = bg->partW * bg->imgCount;
+    /* --- Compute total world size (sum of real slice widths) --- */
+    {
+        int _pi;
+        imgW = 0;
+        for (_pi = 0; _pi < bg->imgCount; _pi++) imgW += bg->partWReal[_pi];
+    }
     imgH = bg->partH;
     {
         int scaledTotalW = (int)(imgW * bg->zoom);
@@ -462,23 +589,26 @@ void afficherBackgroundEtElements(SDL_Renderer *renderer, Background *bg,
         /* --- Draw background parts with zoom --- */
         {
             int p;
+            {
+            int _cumX = 0;
             for (p = 0; p < bg->imgCount; p++) {
-                /* scaled screen x where this part starts */
-                int partScreenX = p * scaledPartW - bgX;
+                int partScreenX = (int)(_cumX * bg->zoom) - bgX;
+                int thisScaledW = (int)(bg->partWReal[p] * bg->zoom);
 
-                if (partScreenX + scaledPartW <= 0) continue;
-                if (partScreenX >= screenW)          continue;
+                if (partScreenX + thisScaledW <= 0) { _cumX += bg->partWReal[p]; continue; }
+                if (partScreenX >= screenW)          { _cumX += bg->partWReal[p]; continue; }
 
                 {
                     SDL_Rect tileDst;
                     tileDst.x = partScreenX;
-                    tileDst.y = -bgY;           /* bgY is already in scaled space */
-                    tileDst.w = scaledPartW;
+                    tileDst.y = -bgY;
+                    tileDst.w = (int)(bg->partWReal[p] * bg->zoom);
                     tileDst.h = scaledPartH;
 
-                    /* render the full part texture scaled into tileDst (SDL clips auto) */
                     SDL_RenderCopy(renderer, bg->img[p], NULL, &tileDst);
                 }
+                _cumX += bg->partWReal[p];
+            }
             }
         }
     }

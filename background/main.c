@@ -104,6 +104,13 @@ int main(int argc, char *argv[])
                                                        &taille, level, screenW, screenH);
                         }
                         break;
+                    case SDLK_F3:
+                        if (level != 3) {
+                            level = 3; taille = 0;
+                            initBackgroundAndPlatforms(renderer, &bg, platforms,
+                                                       &taille, level, screenW, screenH);
+                        }
+                        break;
                     default: break;
                 }
             }
@@ -157,9 +164,11 @@ int main(int argc, char *argv[])
     if (font)
         saisirNomEtAfficherScore(renderer, font, 0, screenW, screenH);
 
-    if (bg.img[0])             SDL_DestroyTexture(bg.img[0]);
-    if (bg.img[1])             SDL_DestroyTexture(bg.img[1]);
-    if (bg.img[2])             SDL_DestroyTexture(bg.img[2]);
+    {
+        int _bi;
+        for (_bi = 0; _bi < 8; _bi++)
+            if (bg.img[_bi]) SDL_DestroyTexture(bg.img[_bi]);
+    }
     if (bg.guide.image)        SDL_DestroyTexture(bg.guide.image);
     if (bg.commentJouer.image) SDL_DestroyTexture(bg.commentJouer.image);
     {
