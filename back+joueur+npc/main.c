@@ -477,6 +477,29 @@ static void doScrolling(Background *bg, Player *p1, Player *p2,
     if (p2->x > screenW - p2->w) p2->x = screenW - p2->w;
 }
 
+static void doScrollingSplit(Player *p1, Player *p2,
+                             int worldW, int worldH, float dt)
+{
+    /* En mode split, chaque joueur a sa propre camera calculee au moment
+       du rendu. Ici on met juste a jour les positions absolues des joueurs
+       dans le monde (pas de camera partagee a modifier).
+       p.x est en coordonnees ecran relatives a la camera globale, donc
+       on applique simplement le deplacement. */
+    double dx1 = (p1->actionTimer == 0) ? (p1->vitesse * dt) : 0.0;
+    double dx2 = (p2->actionTimer == 0) ? (p2->vitesse * dt) : 0.0;
+
+    p1->x += (float)dx1;
+    p2->x += (float)dx2;
+
+    (void)worldH;
+
+    /* Bornes du monde */
+    if (p1->x < 0)                p1->x = 0;
+    if (p1->x > worldW - p1->w)  p1->x = (float)(worldW - p1->w);
+    if (p2->x < 0)                p2->x = 0;
+    if (p2->x > worldW - p2->w)  p2->x = (float)(worldW - p2->w);
+}
+
 static void switchLevel(int level, SDL_Renderer *renderer,
                         Background *bg, Platform platforms[], int *taille,
                         GameNPC *gameNPC,
@@ -596,6 +619,7 @@ int main(int argc, char *argv[])
     int           invP1    = 0, invP2 = 0;
     int           invObstacleP1 = 0, invObstacleP2 = 0;
     int           running  = 1;
+    int           splitScreen = 0;   /* 0 = ecran unique, 1 = split-screen */
     int           currentLevel = 1;
     Uint32        lastTime, prevTick;
     SDL_Event     event;
@@ -603,6 +627,8 @@ int main(int argc, char *argv[])
     MenuResult    menuRes;
     float         groundEcran;
     Minimap      *minimap           = NULL;
+    Minimap      *minimapLeft      = NULL;   /* split P1 */
+    Minimap      *minimapRight     = NULL;   /* split P2 */
     ShakeState    shake             = {0, 0, 0, 0};
     MinimapEnemy  minimapEnemies[MINIMAP_MAX_ENEMIES];
     int           worldH            = 0;
@@ -658,6 +684,15 @@ int main(int argc, char *argv[])
         SDL_Rect mpos = { screenW - MINIMAP_WIDTH - 10, 10,
                           MINIMAP_WIDTH, MINIMAP_HEIGHT };
         minimap = createMinimap(renderer, minimapPath, mpos);
+
+        /* minimaps split-screen : coin inferieur de chaque demi-ecran */
+        int halfW = screenW / 2;
+        SDL_Rect mposL = { halfW  - MINIMAP_WIDTH  - 10, screenH - MINIMAP_HEIGHT - 10,
+                           MINIMAP_WIDTH, MINIMAP_HEIGHT };
+        SDL_Rect mposR = { screenW - MINIMAP_WIDTH - 10, screenH - MINIMAP_HEIGHT - 10,
+                           MINIMAP_WIDTH, MINIMAP_HEIGHT };
+        minimapLeft  = createMinimap(renderer, minimapPath, mposL);
+        minimapRight = createMinimap(renderer, minimapPath, mposR);
     }
     
     printf("World width: %d, Platforms: %d\n", worldW, taille);
@@ -718,6 +753,27 @@ int main(int argc, char *argv[])
                     SDL_Keycode sym = event.key.keysym.sym;
                     if (sym == SDLK_ESCAPE) { running = 0; break; }
 
+                    /* P = toggle split-screen */
+                    if (sym == SDLK_p) {
+                        if (!splitScreen) {
+                            /* Normal -> Split : p.x etait relative a bg.camera_pos.x
+                               On la convertit en position absolue dans le monde */
+                            p1.x += (float)bg.camera_pos.x;
+                            p2.x += (float)bg.camera_pos.x;
+                        } else {
+                            /* Split -> Normal : p.x est absolue, on la ramene
+                               en coordonnee ecran relative a la camera globale */
+                            p1.x -= (float)bg.camera_pos.x;
+                            p2.x -= (float)bg.camera_pos.x;
+                            /* Bornes ecran */
+                            if (p1.x < 0) p1.x = 0;
+                            if (p1.x > screenW - p1.w) p1.x = (float)(screenW - p1.w);
+                            if (p2.x < 0) p2.x = 0;
+                            if (p2.x > screenW - p2.w) p2.x = (float)(screenW - p2.w);
+                        }
+                        splitScreen = !splitScreen;
+                    }
+
                     /* F1/F2/F3 = switch level */
                     int targetLevel = 0;
                     if (sym == SDLK_F1) targetLevel = 1;
@@ -741,12 +797,21 @@ int main(int argc, char *argv[])
                         worldH = bg.partH;
                         if (worldH < screenH) worldH = screenH;
                         freeMinimap(minimap);
+                        freeMinimap(minimapLeft);
+                        freeMinimap(minimapRight);
                         snprintf(minimapPath, sizeof(minimapPath),
                                  "back/level%d_mini.png", currentLevel);
                         {
-                            SDL_Rect mpos = { screenW - MINIMAP_WIDTH - 10, 10,
-                                              MINIMAP_WIDTH, MINIMAP_HEIGHT };
-                            minimap = createMinimap(renderer, minimapPath, mpos);
+                            int halfW2 = screenW / 2;
+                            SDL_Rect mpos  = { screenW - MINIMAP_WIDTH - 10, 10,
+                                               MINIMAP_WIDTH, MINIMAP_HEIGHT };
+                            SDL_Rect mposL = { halfW2  - MINIMAP_WIDTH  - 10, screenH - MINIMAP_HEIGHT - 10,
+                                               MINIMAP_WIDTH, MINIMAP_HEIGHT };
+                            SDL_Rect mposR = { screenW - MINIMAP_WIDTH - 10, screenH - MINIMAP_HEIGHT - 10,
+                                               MINIMAP_WIDTH, MINIMAP_HEIGHT };
+                            minimap      = createMinimap(renderer, minimapPath, mpos);
+                            minimapLeft  = createMinimap(renderer, minimapPath, mposL);
+                            minimapRight = createMinimap(renderer, minimapPath, mposR);
                         }
                         shootCdP1 = 0; shootCdP2 = 0;
                         prevTick = SDL_GetTicks();
@@ -859,7 +924,10 @@ int main(int argc, char *argv[])
             updateAnimState(&p1, dt);
             updateAnimState(&p2, dt);
 
-            doScrolling(&bg, &p1, &p2, screenW, screenH, worldW, dt);
+            if (splitScreen)
+                doScrollingSplit(&p1, &p2, worldW, worldH, dt);
+            else
+                doScrolling(&bg, &p1, &p2, screenW, screenH, worldW, dt);
             bgX = bg.camera_pos.x;
             bgY = (int)bg.camera_pos.y;
 
@@ -918,123 +986,326 @@ int main(int argc, char *argv[])
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderClear(renderer);
 
-            afficherBackgroundEtElements(renderer, &bg, platforms, taille,
-                                         font, dummyColor, timeLeft,
-                                         (p1.vies > p2.vies) ? p1.vies : p2.vies,
-                                         bgX + shake.offsetX,
-                                         bgY + shake.offsetY,
-                                         screenW, screenH, MODE_MONO);
+            if (!splitScreen) {
+                /* ── MODE ECRAN UNIQUE ── */
+                afficherBackgroundEtElements(renderer, &bg, platforms, taille,
+                                             font, dummyColor, timeLeft,
+                                             (p1.vies > p2.vies) ? p1.vies : p2.vies,
+                                             bgX + shake.offsetX,
+                                             bgY + shake.offsetY,
+                                             screenW, screenH, MODE_MONO);
 
-            NPC_draw(&gameNPC, bg.camera_pos.x, bg.camera_pos.y);
+                NPC_draw(&gameNPC, bg.camera_pos.x, bg.camera_pos.y);
 
-            blitPlayer(renderer, &p1);
-            blitPlayer(renderer, &p2);
+                blitPlayer(renderer, &p1);
+                blitPlayer(renderer, &p2);
 
-            {
-                int i;
-                int BULLET_W = 50, BULLET_H = 25;
+                {
+                    int i;
+                    int BULLET_W = 50, BULLET_H = 25;
 
-                for (i = 0; i < MAX_BULLETS; i++) {
-                    SDL_Rect br, pr;
-                    if (!p1.bullets[i].active) continue;
-                    br.x = (int)p1.bullets[i].x; br.y = (int)p1.bullets[i].y;
-                    br.w = BULLET_W; br.h = BULLET_H;
-                    pr.x = (int)p2.x; pr.y = (int)p2.y;
-                    pr.w = p2.w; pr.h = p2.h;
-                    if (rectsOverlap(br, pr) && p2.isAlive && invP2 == 0) {
-                        p2.hp -= 5;
-                        if (p2.hp < 0) p2.hp = 0;
-                        p1.bullets[i].active = 0;
-                        invP2 = INVINCIBILITY_FRAMES;
-                        if (p2.hp == 0) {
-                            p2.hp = 100; p2.vies--; p1.score += 100;
-                            if (p2.vies <= 0) { p2.isAlive = 0; p2.animState = ANIM_DEAD; p2.animFrame = 0; }
+                    for (i = 0; i < MAX_BULLETS; i++) {
+                        SDL_Rect br, pr;
+                        if (!p1.bullets[i].active) continue;
+                        br.x = (int)p1.bullets[i].x; br.y = (int)p1.bullets[i].y;
+                        br.w = BULLET_W; br.h = BULLET_H;
+                        pr.x = (int)p2.x; pr.y = (int)p2.y;
+                        pr.w = p2.w; pr.h = p2.h;
+                        if (rectsOverlap(br, pr) && p2.isAlive && invP2 == 0) {
+                            p2.hp -= 5;
+                            if (p2.hp < 0) p2.hp = 0;
+                            p1.bullets[i].active = 0;
+                            invP2 = INVINCIBILITY_FRAMES;
+                            if (p2.hp == 0) {
+                                p2.hp = 100; p2.vies--; p1.score += 100;
+                                if (p2.vies <= 0) { p2.isAlive = 0; p2.animState = ANIM_DEAD; p2.animFrame = 0; }
+                            }
                         }
                     }
-                }
 
-                for (i = 0; i < MAX_BULLETS; i++) {
-                    SDL_Rect br, pr;
-                    if (!p2.bullets[i].active) continue;
-                    br.x = (int)p2.bullets[i].x; br.y = (int)p2.bullets[i].y;
-                    br.w = BULLET_W; br.h = BULLET_H;
-                    pr.x = (int)p1.x; pr.y = (int)p1.y;
-                    pr.w = p1.w; pr.h = p1.h;
-                    if (rectsOverlap(br, pr) && p1.isAlive && invP1 == 0) {
-                        p1.hp -= 5;
-                        if (p1.hp < 0) p1.hp = 0;
-                        p2.bullets[i].active = 0;
-                        invP1 = INVINCIBILITY_FRAMES;
-                        if (p1.hp == 0) {
-                            p1.hp = 100; p1.vies--; p2.score += 100;
-                            if (p1.vies <= 0) { p1.isAlive = 0; p1.animState = ANIM_DEAD; p1.animFrame = 0; }
+                    for (i = 0; i < MAX_BULLETS; i++) {
+                        SDL_Rect br, pr;
+                        if (!p2.bullets[i].active) continue;
+                        br.x = (int)p2.bullets[i].x; br.y = (int)p2.bullets[i].y;
+                        br.w = BULLET_W; br.h = BULLET_H;
+                        pr.x = (int)p1.x; pr.y = (int)p1.y;
+                        pr.w = p1.w; pr.h = p1.h;
+                        if (rectsOverlap(br, pr) && p1.isAlive && invP1 == 0) {
+                            p1.hp -= 5;
+                            if (p1.hp < 0) p1.hp = 0;
+                            p2.bullets[i].active = 0;
+                            invP1 = INVINCIBILITY_FRAMES;
+                            if (p1.hp == 0) {
+                                p1.hp = 100; p1.vies--; p2.score += 100;
+                                if (p1.vies <= 0) { p1.isAlive = 0; p1.animState = ANIM_DEAD; p1.animFrame = 0; }
+                            }
                         }
                     }
-                }
 
-                for (i = 0; i < MAX_BULLETS; i++) {
-                    SDL_Rect br;
-                    if (!p1.bullets[i].active) continue;
-                    br.w = BULLET_W; br.h = BULLET_H;
-                    br.x = (int)p1.bullets[i].x - br.w / 2;
-                    br.y = (int)p1.bullets[i].y - br.h / 2;
-                    if (batarang) {
-                        SDL_SetTextureColorMod(batarang, 0, 220, 255);
-                        SDL_SetTextureAlphaMod(batarang, 255);
-                        SDL_RenderCopy(renderer, batarang, NULL, &br);
-                    } else {
-                        SDL_SetRenderDrawColor(renderer, 0, 220, 255, 255);
-                        SDL_RenderFillRect(renderer, &br);
-                    }
-                }
-
-                for (i = 0; i < MAX_BULLETS; i++) {
-                    SDL_Rect br;
-                    if (!p2.bullets[i].active) continue;
-                    br.w = BULLET_W; br.h = BULLET_H;
-                    br.x = (int)p2.bullets[i].x - br.w / 2;
-                    br.y = (int)p2.bullets[i].y - br.h / 2;
-                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-                    {
-                        int s, gap = 8;
-                        for (s = -1; s <= 1; s++) {
-                            int ox = s * gap;
-                            SDL_SetRenderDrawColor(renderer, 255, 60, 220, 160);
-                            SDL_RenderDrawLine(renderer,
-                                br.x + br.w/2 + ox,          br.y,
-                                br.x + br.w/2 + ox + br.h/2, br.y + br.h);
+                    for (i = 0; i < MAX_BULLETS; i++) {
+                        SDL_Rect br;
+                        if (!p1.bullets[i].active) continue;
+                        br.w = BULLET_W; br.h = BULLET_H;
+                        br.x = (int)p1.bullets[i].x - br.w / 2;
+                        br.y = (int)p1.bullets[i].y - br.h / 2;
+                        if (batarang) {
+                            SDL_SetTextureColorMod(batarang, 0, 220, 255);
+                            SDL_SetTextureAlphaMod(batarang, 255);
+                            SDL_RenderCopy(renderer, batarang, NULL, &br);
+                        } else {
+                            SDL_SetRenderDrawColor(renderer, 0, 220, 255, 255);
+                            SDL_RenderFillRect(renderer, &br);
                         }
                     }
-                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
+                    for (i = 0; i < MAX_BULLETS; i++) {
+                        SDL_Rect br;
+                        if (!p2.bullets[i].active) continue;
+                        br.w = BULLET_W; br.h = BULLET_H;
+                        br.x = (int)p2.bullets[i].x - br.w / 2;
+                        br.y = (int)p2.bullets[i].y - br.h / 2;
+                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                        {
+                            int s, gap = 8;
+                            for (s = -1; s <= 1; s++) {
+                                int ox = s * gap;
+                                SDL_SetRenderDrawColor(renderer, 255, 60, 220, 160);
+                                SDL_RenderDrawLine(renderer,
+                                    br.x + br.w/2 + ox,          br.y,
+                                    br.x + br.w/2 + ox + br.h/2, br.y + br.h);
+                            }
+                        }
+                        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+                    }
                 }
-            }
 
-            renderHUD(renderer, font, &p1, &p2, screenW);
+                renderHUD(renderer, font, &p1, &p2, screenW);
 
-            /* Level indicator — centre haut de l'écran */
-            if (font) {
-                char lvlBuf[32];
-                SDL_Surface *lvlSurf;
-                SDL_Texture *lvlTex;
-                SDL_Rect     lvlDst;
-                SDL_Color    gold = {255, 215, 0, 255};
-                snprintf(lvlBuf, sizeof(lvlBuf), "LEVEL %d  [F1/F2/F3]", currentLevel);
-                lvlSurf = TTF_RenderUTF8_Blended(font, lvlBuf, gold);
-                if (lvlSurf) {
-                    lvlTex = SDL_CreateTextureFromSurface(renderer, lvlSurf);
-                    lvlDst.x = screenW / 2 - lvlSurf->w / 2;
-                    lvlDst.y = 8;
-                    lvlDst.w = lvlSurf->w;
-                    lvlDst.h = lvlSurf->h;
-                    SDL_RenderCopy(renderer, lvlTex, NULL, &lvlDst);
-                    SDL_FreeSurface(lvlSurf);
-                    SDL_DestroyTexture(lvlTex);
+                /* Level indicator */
+                if (font) {
+                    char lvlBuf[32];
+                    SDL_Surface *lvlSurf;
+                    SDL_Texture *lvlTex;
+                    SDL_Rect     lvlDst;
+                    SDL_Color    gold = {255, 215, 0, 255};
+                    snprintf(lvlBuf, sizeof(lvlBuf), "LEVEL %d  [F1/F2/F3]", currentLevel);
+                    lvlSurf = TTF_RenderUTF8_Blended(font, lvlBuf, gold);
+                    if (lvlSurf) {
+                        lvlTex = SDL_CreateTextureFromSurface(renderer, lvlSurf);
+                        lvlDst.x = screenW / 2 - lvlSurf->w / 2;
+                        lvlDst.y = 8;
+                        lvlDst.w = lvlSurf->w;
+                        lvlDst.h = lvlSurf->h;
+                        SDL_RenderCopy(renderer, lvlTex, NULL, &lvlDst);
+                        SDL_FreeSurface(lvlSurf);
+                        SDL_DestroyTexture(lvlTex);
+                    }
                 }
-            }
 
-            /* minimap — always on top, rendered last */
-            renderMinimap(renderer, minimap, minimapEnemies, gameNPC.enemyCnt,
-                          worldW, worldH);
+                /* minimap */
+                renderMinimap(renderer, minimap, minimapEnemies, gameNPC.enemyCnt,
+                              worldW, worldH);
+
+            } else {
+                /* ── MODE SPLIT-SCREEN (touche P) ── *
+                 * Moitie gauche  = vue centree sur P1
+                 * Moitie droite  = vue centree sur P2
+                 * Ligne de separation au milieu                      */
+
+                int halfW = screenW / 2;
+
+                /* En mode split, doScrollingSplit met a jour p.x comme
+                   position absolue dans le monde (sans camera globale).
+                   La camera de chaque demi-ecran est centree sur le joueur. */
+                int scaled1X = (int)p1.x;
+                int scaled2X = (int)p2.x;
+
+                int cam1X = scaled1X + p1.w / 2 - halfW / 2;
+                int cam1Y = bgY;
+                if (cam1X < 0) cam1X = 0;
+                if (cam1X + halfW > worldW) cam1X = worldW - halfW;
+
+                int cam2X = scaled2X + p2.w / 2 - halfW / 2;
+                int cam2Y = bgY;
+                if (cam2X < 0) cam2X = 0;
+                if (cam2X + halfW > worldW) cam2X = worldW - halfW;
+
+                /* Position des joueurs dans chaque demi-vue (coords écran) :
+                   screenPos = scaledWorldPos - camX                        */
+                int p1_in_left  = scaled1X - cam1X;
+                int p2_in_left  = scaled2X - cam1X;
+                int p1_in_right = scaled1X - cam2X;
+                int p2_in_right = scaled2X - cam2X;
+
+                /* ---- Moitie gauche (P1) ---- */
+                {
+                /* ClipRect absolu pour empecher tout debordement */
+                SDL_Rect clipLeft = { 0, 0, halfW, screenH };
+                SDL_RenderSetClipRect(renderer, &clipLeft);
+                SDL_RenderSetViewport(renderer, NULL); /* viewport = ecran complet */
+
+                /* Fond noir uniquement sur la moitie gauche */
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderFillRect(renderer, &clipLeft);
+
+                /* Rendu background avec cam1X : les tiles sont placees a
+                   (tileX - cam1X) ce qui tombe dans [0..halfW] */
+                int savedCamX = bg.camera_pos.x;
+                int savedCamW = bg.camera_pos.w;
+                bg.camera_pos.x = cam1X;
+                bg.camera_pos.w = halfW;
+
+                afficherBackgroundEtElements(renderer, &bg, platforms, taille,
+                                             font, dummyColor, timeLeft, p1.vies,
+                                             cam1X + shake.offsetX, cam1Y + shake.offsetY,
+                                             halfW, screenH, MODE_MONO);
+                NPC_draw(&gameNPC, cam1X, cam1Y);
+
+                bg.camera_pos.x = savedCamX;
+                bg.camera_pos.w = savedCamW;
+
+                {
+                    float origX1 = p1.x, origX2 = p2.x;
+                    p1.x = (float)p1_in_left;
+                    p2.x = (float)p2_in_left;
+                    blitPlayer(renderer, &p1);
+                    blitPlayer(renderer, &p2);
+                    p1.x = origX1;
+                    p2.x = origX2;
+                }
+
+                /* HUD gauche : seulement P1 */
+                if (font) {
+                    char buf[80];
+                    SDL_Surface *surf;
+                    SDL_Texture *tex;
+                    SDL_Rect d;
+                    SDL_Color cyan = { 0, 220, 220, 255 };
+                    SDL_Rect bg1r, fg1r;
+                    int hp1w;
+                    snprintf(buf, sizeof(buf), "BATMAN  Vies:%d  Score:%d", p1.vies, p1.score);
+                    surf = TTF_RenderUTF8_Blended(font, buf, cyan);
+                    if (surf) {
+                        tex = SDL_CreateTextureFromSurface(renderer, surf);
+                        d.x = 10; d.y = 8; d.w = surf->w; d.h = surf->h;
+                        SDL_RenderCopy(renderer, tex, NULL, &d);
+                        SDL_FreeSurface(surf); SDL_DestroyTexture(tex);
+                    }
+                    bg1r.x = 10; bg1r.y = 30; bg1r.w = 200; bg1r.h = 12;
+                    hp1w = p1.hp * 2; if (hp1w < 0) hp1w = 0;
+                    fg1r.x = 10; fg1r.y = 30; fg1r.w = hp1w; fg1r.h = 12;
+                    SDL_SetRenderDrawColor(renderer, 40, 0, 0, 255);   SDL_RenderFillRect(renderer, &bg1r);
+                    SDL_SetRenderDrawColor(renderer, 220, 60, 60, 255); SDL_RenderFillRect(renderer, &fg1r);
+                    SDL_SetRenderDrawColor(renderer, 180,180,180, 255); SDL_RenderDrawRect(renderer, &bg1r);
+                }
+
+                /* Minimap P1 — coin bas-droite de la moitie gauche */
+                if (minimapLeft) {
+                    updateMinimap(minimapLeft,
+                        scaled1X, (int)p1.y + (int)bg.camera_pos.y,
+                        scaled2X, (int)p2.y + (int)bg.camera_pos.y,
+                        worldW, worldH);
+                    renderMinimap(renderer, minimapLeft, minimapEnemies, gameNPC.enemyCnt,
+                                  worldW, worldH);
+                }
+                } /* fin moitie gauche */
+
+                /* ---- Moitie droite (P2) ---- */
+                {
+                SDL_Rect clipRight = { halfW, 0, halfW, screenH };
+                SDL_RenderSetClipRect(renderer, &clipRight);
+                SDL_RenderSetViewport(renderer, NULL);
+
+                /* Fond noir uniquement sur la moitie droite */
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderFillRect(renderer, &clipRight);
+
+                /* Pour la moitie droite, les coordonnees absolues du rendu
+                   doivent etre decalees de +halfW car viewport = ecran complet.
+                   On utilise un offset : on soustrait cam2X puis on ajoute halfW */
+                int savedCamX2 = bg.camera_pos.x;
+                int savedCamW2 = bg.camera_pos.w;
+                /* cam2X_right = cam2X - halfW => les tiles s'affichent
+                   a (tileX - cam2X + halfW), soit dans [halfW..screenW] */
+                bg.camera_pos.x = cam2X - halfW;
+                bg.camera_pos.w = halfW;
+
+                afficherBackgroundEtElements(renderer, &bg, platforms, taille,
+                                             font, dummyColor, timeLeft, p2.vies,
+                                             (cam2X - halfW) + shake.offsetX, cam2Y + shake.offsetY,
+                                             halfW, screenH, MODE_MONO);
+                NPC_draw(&gameNPC, cam2X - halfW, cam2Y);
+
+                bg.camera_pos.x = savedCamX2;
+                bg.camera_pos.w = savedCamW2;
+
+                {
+                    /* viewport = ecran complet => coordonnees absolues => +halfW */
+                    float origX1 = p1.x, origX2 = p2.x;
+                    p1.x = (float)(p1_in_right + halfW);
+                    p2.x = (float)(p2_in_right + halfW);
+                    blitPlayer(renderer, &p1);
+                    blitPlayer(renderer, &p2);
+                    p1.x = origX1;
+                    p2.x = origX2;
+                }
+
+                /* HUD droite : seulement P2 — coordonnees absolues (+halfW) */
+                if (font) {
+                    char buf[80];
+                    SDL_Surface *surf;
+                    SDL_Texture *tex;
+                    SDL_Rect d;
+                    SDL_Color magenta = { 220, 60, 220, 255 };
+                    SDL_Rect bg2r, fg2r;
+                    int hp2w;
+                    snprintf(buf, sizeof(buf), "CATWOMAN  Vies:%d  Score:%d", p2.vies, p2.score);
+                    surf = TTF_RenderUTF8_Blended(font, buf, magenta);
+                    if (surf) {
+                        tex = SDL_CreateTextureFromSurface(renderer, surf);
+                        d.x = screenW - surf->w - 10; d.y = 8; d.w = surf->w; d.h = surf->h;
+                        SDL_RenderCopy(renderer, tex, NULL, &d);
+                        SDL_FreeSurface(surf); SDL_DestroyTexture(tex);
+                    }
+                    bg2r.x = screenW - 210; bg2r.y = 30; bg2r.w = 200; bg2r.h = 12;
+                    hp2w = p2.hp * 2; if (hp2w < 0) hp2w = 0;
+                    fg2r.x = screenW - 210; fg2r.y = 30; fg2r.w = hp2w; fg2r.h = 12;
+                    SDL_SetRenderDrawColor(renderer, 40, 0, 40, 255);   SDL_RenderFillRect(renderer, &bg2r);
+                    SDL_SetRenderDrawColor(renderer, 200, 60,220, 255); SDL_RenderFillRect(renderer, &fg2r);
+                    SDL_SetRenderDrawColor(renderer, 180,180,180, 255); SDL_RenderDrawRect(renderer, &bg2r);
+                }
+
+                /* Minimap P2 — coin bas-droite de la moitie droite (coords absolues) */
+                if (minimapRight) {
+                    updateMinimap(minimapRight,
+                        scaled1X, (int)p1.y + (int)bg.camera_pos.y,
+                        scaled2X, (int)p2.y + (int)bg.camera_pos.y,
+                        worldW, worldH);
+                    renderMinimap(renderer, minimapRight, minimapEnemies, gameNPC.enemyCnt,
+                                  worldW, worldH);
+                }
+                } /* fin moitie droite */
+
+                /* Retablir viewport complet */
+                SDL_RenderSetViewport(renderer, NULL);
+                SDL_RenderSetClipRect(renderer, NULL);
+
+                /* Ligne de separation blanche au milieu */
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                SDL_RenderDrawLine(renderer, halfW, 0, halfW, screenH);
+                SDL_RenderDrawLine(renderer, halfW - 1, 0, halfW - 1, screenH);
+
+                /* Indicateur de mode en haut au centre */
+                if (font) {
+                    SDL_Surface *ms = TTF_RenderUTF8_Blended(font, "SPLIT [P]", (SDL_Color){255,215,0,255});
+                    if (ms) {
+                        SDL_Texture *mt = SDL_CreateTextureFromSurface(renderer, ms);
+                        SDL_Rect md = { screenW/2 - ms->w/2, 2, ms->w, ms->h };
+                        SDL_RenderCopy(renderer, mt, NULL, &md);
+                        SDL_FreeSurface(ms); SDL_DestroyTexture(mt);
+                    }
+                }
+            } /* fin split-screen */
 
             SDL_RenderPresent(renderer);
             SDL_Delay(16);
@@ -1049,6 +1320,8 @@ int main(int argc, char *argv[])
 cleanup:
     NPC_clean(&gameNPC);
     freeMinimap(minimap);
+    freeMinimap(minimapLeft);
+    freeMinimap(minimapRight);
 
     if (batarang) SDL_DestroyTexture(batarang);
     if (p1.sprite.sheetRight) SDL_DestroyTexture(p1.sprite.sheetRight);
