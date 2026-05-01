@@ -540,7 +540,6 @@ static void switchLevel(int level, SDL_Renderer *renderer,
     bg->camera_pos.h = screenH;
 
     NPC_init(gameNPC, renderer, NULL);
-    NPC_setGroundY(gameNPC, (int)groundEcran);   /* après NPC_init (memset) */
     NPC_loadLevel(gameNPC, renderer, level);
     gameNPC->pH     = &p1->hp;
     gameNPC->pScore = &p1->score;
@@ -704,6 +703,7 @@ int main(int argc, char *argv[])
     bg.camera_pos.h = screenH;
 
     groundEcran = (float)(screenH - JOUEUR_H - 20);
+
     initPlayer(&p1, 150.0f, groundEcran, 0);
     initPlayer(&p2, (float)(screenW - 250), groundEcran, 1);
     p1.w = JOUEUR_W; p1.h = JOUEUR_H;
@@ -725,7 +725,6 @@ int main(int argc, char *argv[])
     }
 
     NPC_init(&gameNPC, renderer, NULL);
-    NPC_setGroundY(&gameNPC, (int)groundEcran);   /* doit être après NPC_init (memset) */
     NPC_loadLevel(&gameNPC, renderer, currentLevel);
     gameNPC.pH = &p1.hp;
     gameNPC.pScore = &p1.score;
@@ -959,12 +958,7 @@ int main(int argc, char *argv[])
             updatePlatforms(platforms, taille);
 
             {
-                /* IMPORTANT : on passe le rect en coordonnées MONDE (world-space)
-                   = position écran + caméra, pour que la comparaison avec
-                   les ennemis (aussi en monde) soit cohérente. */
-                SDL_Rect playerRect = { (int)p1.x + bg.camera_pos.x,
-                                        (int)p1.y + (int)bg.camera_pos.y,
-                                        p1.w, p1.h };
+                SDL_Rect playerRect = { (int)p1.x, (int)p1.y, p1.w, p1.h };
                 int hpBefore = p1.hp;
                 NPC_update(&gameNPC, &playerRect, &p1.hp, &p1.score, bg.camera_pos.x, bg.camera_pos.y);
                 if (p1.hp < hpBefore) triggerShake(&shake);

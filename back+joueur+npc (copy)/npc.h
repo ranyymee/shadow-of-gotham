@@ -35,9 +35,6 @@ typedef struct {
     SDL_Texture *tex;
     int frame, step;
     int attacking, dying, active;
-    int attackCooldown;
-    int lastAttackTick;
-    int groundY;
 } NPC;
 
 typedef struct {
@@ -49,7 +46,6 @@ typedef struct {
     unsigned int invincibleEnd;
     SDL_Texture *bg, *itemTex;
     Blood blood[MAX_BLOOD];
-    int groundY;
 } GameNPC;
 
 void NPC_init(GameNPC *n, SDL_Renderer *r, const char *bgPath);
@@ -57,6 +53,5 @@ void NPC_loadLevel(GameNPC *n, SDL_Renderer *r, int lvl);
 void NPC_update(GameNPC *n, SDL_Rect *player, int *health, int *score, int cx, int cy);
 void NPC_draw(GameNPC *n, int cx, int cy);
 void NPC_clean(GameNPC *n);
-void NPC_setGroundY(GameNPC *n, int groundY);
 
 #endif
