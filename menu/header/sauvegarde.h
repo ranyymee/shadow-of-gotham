@@ -2,7 +2,7 @@
 #define SAUVEGARDE_H
 
 #include <SDL2/SDL.h>
-#include "header.h" // This gives you access to GameState and STATE_PLAYER
+#include "game.h"   /* GameState, STATE_* sont définis ici */
 
 void initialiser_sauvegarde(SDL_Renderer *renderer);
 void gerer_evenement_sauvegarde(SDL_Event event, GameState *state);

@@ -1,13 +1,14 @@
-/*
- * sourceMenu.c — Implémentation du menu principal
- * Utilise uniquement header.h
- */
 #include "header.h"
+#include "game.h"
 #include <stdio.h>
 
 /* ================ TEXTURE INTERNE ================ */
 static SDL_Texture *loadTextureMenu(Menu *menu, const char *path)
 {
+    if (!path || path[0] == '\0') {
+        printf("[WARN] loadTextureMenu: NULL ou chemin vide\n");
+        return NULL;
+    }
     SDL_Surface *surf = IMG_Load(path);
     if (!surf) {
         printf("[WARN] Erreur chargement %s\n", path);
@@ -18,227 +19,275 @@ static SDL_Texture *loadTextureMenu(Menu *menu, const char *path)
     return tex;
 }
 
-/* -------------------------------------------------------
- * Dégradé vertical sur le texte
- * ----------------------------------------------------- */
-static SDL_Texture *makeGradientText(Menu *menu, TTF_Font *font,
-                                     const char *text,
-                                     SDL_Color topColor,
-                                     SDL_Color botColor)
-{
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Surface *base = TTF_RenderText_Blended(font, text, white);
-    if (!base) return NULL;
-
-    SDL_Surface *src = SDL_ConvertSurfaceFormat(base, SDL_PIXELFORMAT_ARGB8888, 0);
-    SDL_FreeSurface(base);
-    if (!src) return NULL;
-
-    int w = src->w, h = src->h;
-    SDL_LockSurface(src);
-    Uint32 *pixels = (Uint32 *)src->pixels;
-    for (int y = 0; y < h; y++) {
-        float t = (float)y / (float)(h - 1);
-        Uint8 r = (Uint8)(topColor.r + t * ((int)botColor.r - topColor.r));
-        Uint8 g = (Uint8)(topColor.g + t * ((int)botColor.g - topColor.g));
-        Uint8 b = (Uint8)(topColor.b + t * ((int)botColor.b - topColor.b));
-        for (int x = 0; x < w; x++) {
-            Uint8 a = (pixels[y * w + x] >> 24) & 0xFF;
-            if (a > 0)
-                pixels[y * w + x] = ((Uint32)a << 24)|((Uint32)r << 16)|
-                                     ((Uint32)g <<  8)| b;
-        }
-    }
-    SDL_UnlockSurface(src);
-    SDL_Texture *tex = SDL_CreateTextureFromSurface(menu->renderer, src);
-    SDL_FreeSurface(src);
-    return tex;
-}
-
-/* ================ INIT ================ */
+/* ================= INIT ================= */
 int init(Menu *menu)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         printf("[ERR] SDL_Init: %s\n", SDL_GetError());
         return 0;
     }
+<<<<<<< HEAD
+=======
+    printf("[OK] SDL_Init\n");
+>>>>>>> 75f7f12 (add bck folder)
+
     IMG_Init(IMG_INIT_PNG | IMG_INIT_JPG);
     TTF_Init();
     Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048);
     Mix_Init(MIX_INIT_MP3);
+    printf("[OK] IMG/TTF/Mix init\n");
 
     menu->window = SDL_CreateWindow(
         "Shadow Of Gotham",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
         1280, 720,
         SDL_WINDOW_FULLSCREEN_DESKTOP);
-    if (!menu->window) { printf("[ERR] %s\n", SDL_GetError()); return 0; }
+
+<<<<<<< HEAD
+    if (!menu->window) return 0;
 
     menu->renderer = SDL_CreateRenderer(menu->window, -1, SDL_RENDERER_ACCELERATED);
-    if (!menu->renderer) { printf("[ERR] %s\n", SDL_GetError()); return 0; }
+    if (!menu->renderer) return 0;
 
-    menu->running      = true;
+    menu->running = true;
+    menu->currentFrame = 0;
+=======
+    if (!menu->window) {
+        printf("[ERR] SDL_CreateWindow: %s\n", SDL_GetError());
+        return 0;
+    }
+    printf("[OK] Window created\n");
+
+    menu->renderer = SDL_CreateRenderer(menu->window, -1, SDL_RENDERER_ACCELERATED);
+    if (!menu->renderer) {
+        printf("[ERR] SDL_CreateRenderer: %s\n", SDL_GetError());
+        return 0;
+    }
+    printf("[OK] Renderer created\n");
+
+    menu->running = true;
     menu->currentFrame = 0;
     menu->bgDirection  = 1;
+>>>>>>> 75f7f12 (add bck folder)
+
     return 1;
 }
 
-/* ================ BACKGROUND ================ */
+/* ================= BACKGROUND LOAD (START ONLY) ================= */
 void loadBackground(Menu *menu)
 {
-    for (int i = 0; i < FRAME_COUNT; i++) {
+    for (int i = 0; i < 5; i++)
+    {
         char path[128];
         sprintf(path, "assets/image/ezgif-frame-%03d.png", i + 1);
         menu->frames[i] = loadTextureMenu(menu, path);
     }
+
+    for (int i = 5; i < FRAME_COUNT; i++)
+        menu->frames[i] = NULL;
 }
 
-/* ================ BUTTONS ================ */
-void loadButtons(Menu *menu)
+/* ================= UPDATE (🔥 FIX IMPORTANT) ================= */
+void update(Menu *menu)
 {
-    const char *normal[BUTTON_COUNT] = {
-        "bouton play 1.png",   "bouton option 1.png",
-        "bouton score 1.png",  "bouton history 1.png",
-        "bouton quitter 1.png"
-    };
-    const char *hover[BUTTON_COUNT] = {
-        "bouton play.png",  "bouton option.png",
-        "bouton score.png", "bouton history.png",
-        "bouton quitter.png"
-    };
+    menu->currentFrame++;
 
-    int winW, winH;
-    SDL_GetWindowSize(menu->window, &winW, &winH);
+    if (menu->currentFrame >= FRAME_COUNT)
+        menu->currentFrame = 0;
 
-    for (int i = 0; i < BUTTON_COUNT; i++) {
-        char path[120];
-        sprintf(path, "assets/image/%s", normal[i]);
-        menu->buttons[i].normal = loadTextureMenu(menu, path);
-        sprintf(path, "assets/image/%s", hover[i]);
-        menu->buttons[i].hover  = loadTextureMenu(menu, path);
-        menu->buttons[i].state  = 0;
-    }
-
-    int btnW  = 300;
-    int btnH  = 105;
-    int gap   = 20;
-
-    int totalH = 4 * btnH + 3 * gap;
-    int startY = (winH - totalH) / 2 + 90;
-    int btnX   = winW / 2 + (winW / 2 - btnW) / 2 - 150;
-
-    for (int i = 0; i < 4; i++) {
-        menu->buttons[i].rect.w = btnW;
-        menu->buttons[i].rect.h = btnH;
-        menu->buttons[i].rect.x = btnX;
-        menu->buttons[i].rect.y = startY + i * (btnH + gap);
-    }
-
+    /* load frame if needed */
+    if (!menu->frames[menu->currentFrame])
     {
-        int qW = 120;
-        int qH = 120;
-        menu->buttons[4].rect.w = qW;
-        menu->buttons[4].rect.h = qH;
-        menu->buttons[4].rect.x = winW - qW - 20;
-        menu->buttons[4].rect.y = winH - qH - 20;
+        char path[128];
+        sprintf(path,
+            "assets/image/ezgif-frame-%03d.png",
+            menu->currentFrame + 1);
+
+        menu->frames[menu->currentFrame] =
+            loadTextureMenu(menu, path);
+    }
+
+    /* free old frame */
+    int old = menu->currentFrame - 2;
+    if (old >= 0 && menu->frames[old])
+    {
+        SDL_DestroyTexture(menu->frames[old]);
+        menu->frames[old] = NULL;
     }
 }
 
-/* ================ ACTION ================ */
-void action(Menu *menu, Action a)
-{
-    if (menu->clickSound) Mix_PlayChannel(-1, menu->clickSound, 0);
-    switch (a) {
-        case PLAY:    printf("PLAY\n");    break;
-        case OPTIONS: printf("OPTIONS\n"); break;
-        case SCORES:  printf("SCORES\n");  break;
-        case HISTORY: printf("HISTORY\n"); break;
-        case QUITTER: menu->running = false; break;
-    }
-}
-
-/* ================ EVENTS (compatibilité) ================ */
-void events(Menu *menu) { (void)menu; }
-
-/* ================ RENDER ================ */
+/* ================= RENDER (CLEAN ONLY) ================= */
 void render(Menu *menu)
 {
     SDL_RenderClear(menu->renderer);
 
+<<<<<<< HEAD
+    /* afficher frame actuelle */
+=======
+    /* arrière-plan animé */
+>>>>>>> 75f7f12 (add bck folder)
     if (menu->frames[menu->currentFrame])
-        SDL_RenderCopy(menu->renderer, menu->frames[menu->currentFrame], NULL, NULL);
+        SDL_RenderCopy(menu->renderer,
+                       menu->frames[menu->currentFrame],
+                       NULL, NULL);
 
-    if (menu->textShadow)
-        SDL_RenderCopy(menu->renderer, menu->textShadow,   NULL, &menu->textShadowRect);
-    if (menu->textOfGotham)
-        SDL_RenderCopy(menu->renderer, menu->textOfGotham, NULL, &menu->textOfGothamRect);
+<<<<<<< HEAD
+    /* boutons */
+=======
+    /* ── Titre SHADOW OF GOTHAM ── */
+    if (menu->font) {
+        int W, H;
+        SDL_GetRendererOutputSize(menu->renderer, &W, &H);
 
-    for (int i = 0; i < BUTTON_COUNT; i++) {
-        Button *b        = &menu->buttons[i];
+        /* "SHADOW" en vert */
+        SDL_Color green  = {0, 200, 0, 255};
+        SDL_Color orange = {220, 100, 0, 255};
+        SDL_Color white  = {255, 255, 255, 255};
+
+        SDL_Surface *s1 = TTF_RenderText_Blended(menu->font, "SHADOW", green);
+        SDL_Surface *s2 = TTF_RenderText_Blended(menu->font, "OF", white);
+        SDL_Surface *s3 = TTF_RenderText_Blended(menu->font, "GOTHAM", orange);
+
+        int titleY = H * 6 / 100;
+        int gap2   = W * 1 / 100;
+
+        int totalW = 0;
+        if (s1) totalW += s1->w + gap2;
+        if (s2) totalW += s2->w + gap2;
+        if (s3) totalW += s3->w;
+
+        int curX = (W - totalW) / 2;
+
+        if (s1) {
+            SDL_Texture *t = SDL_CreateTextureFromSurface(menu->renderer, s1);
+            SDL_Rect r = {curX, titleY, s1->w, s1->h};
+            SDL_RenderCopy(menu->renderer, t, NULL, &r);
+            curX += s1->w + gap2;
+            SDL_DestroyTexture(t); SDL_FreeSurface(s1);
+        }
+        if (s2) {
+            SDL_Texture *t = SDL_CreateTextureFromSurface(menu->renderer, s2);
+            SDL_Rect r = {curX, titleY, s2->w, s2->h};
+            SDL_RenderCopy(menu->renderer, t, NULL, &r);
+            curX += s2->w + gap2;
+            SDL_DestroyTexture(t); SDL_FreeSurface(s2);
+        }
+        if (s3) {
+            SDL_Texture *t = SDL_CreateTextureFromSurface(menu->renderer, s3);
+            SDL_Rect r = {curX, titleY, s3->w, s3->h};
+            SDL_RenderCopy(menu->renderer, t, NULL, &r);
+            SDL_DestroyTexture(t); SDL_FreeSurface(s3);
+        }
+    }
+
+    /* ── Boutons ── */
+>>>>>>> 75f7f12 (add bck folder)
+    for (int i = 0; i < BUTTON_COUNT; i++)
+    {
+        Button *b = &menu->buttons[i];
         SDL_Texture *tex = b->state ? b->hover : b->normal;
-        if (tex) SDL_RenderCopy(menu->renderer, tex, NULL, &b->rect);
+<<<<<<< HEAD
+
+=======
+>>>>>>> 75f7f12 (add bck folder)
+        if (tex)
+            SDL_RenderCopy(menu->renderer, tex, NULL, &b->rect);
     }
 
     SDL_RenderPresent(menu->renderer);
 }
 
-/* ================ LOAD ASSETS ================ */
+/* ================= LOAD ASSETS ================= */
 void loadAssets(Menu *menu)
 {
+    printf("[OK] loadBackground...\n"); fflush(stdout);
     loadBackground(menu);
+    printf("[OK] loadButtons...\n");   fflush(stdout);
     loadButtons(menu);
+    printf("[OK] buttons loaded\n");   fflush(stdout);
 
     menu->clickSound = Mix_LoadWAV("assets/audio/click.wav");
-    if (!menu->clickSound) printf("[WARN] click.wav: %s\n", Mix_GetError());
-
     menu->music = Mix_LoadMUS("assets/audio/menu_music.mp3");
-    if (!menu->music) printf("[WARN] menu_music.mp3: %s\n", Mix_GetError());
-    Mix_VolumeMusic(64);
-    if (menu->music) Mix_PlayMusic(menu->music, -1);
+<<<<<<< HEAD
+=======
+    printf("[OK] audio loaded (click=%p music=%p)\n",
+           (void*)menu->clickSound, (void*)menu->music); fflush(stdout);
+>>>>>>> 75f7f12 (add bck folder)
+
+    if (menu->music)
+        Mix_PlayMusic(menu->music, -1);
 
     menu->font = TTF_OpenFont("assets/font/font.ttf", 52);
-    if (!menu->font) printf("[WARN] font: %s\n", TTF_GetError());
-
-    if (menu->font) {
-        SDL_Color gTop = {  0, 230,  50, 255};
-        SDL_Color gBot = {  0,  70,  10, 255};
-        SDL_Color rTop = {255, 110,   0, 255};
-        SDL_Color rBot = {130,   8,   0, 255};
-
-        menu->textShadow   = makeGradientText(menu, menu->font,
-                                              "SHADOW",     gTop, gBot);
-        menu->textOfGotham = makeGradientText(menu, menu->font,
-                                              " OF GOTHAM", rTop, rBot);
-
-        int sw = 0, sh = 0, gw = 0, gh = 0;
-        if (menu->textShadow)
-            SDL_QueryTexture(menu->textShadow,   NULL, NULL, &sw, &sh);
-        if (menu->textOfGotham)
-            SDL_QueryTexture(menu->textOfGotham, NULL, NULL, &gw, &gh);
-
-        int titleX = 480;
-        int titleY = 120;
-
-        menu->textShadowRect   = (SDL_Rect){ titleX,      titleY, sw, sh };
-        menu->textOfGothamRect = (SDL_Rect){ titleX + sw, titleY, gw, gh };
-    }
+<<<<<<< HEAD
+=======
+    printf("[OK] font=%p\n", (void*)menu->font); fflush(stdout);
+>>>>>>> 75f7f12 (add bck folder)
 }
 
-/* ================ DESTROY ================ */
+/* ================= DESTROY ================= */
 void destroy(Menu *menu)
 {
     for (int i = 0; i < FRAME_COUNT; i++)
-        if (menu->frames[i]) SDL_DestroyTexture(menu->frames[i]);
-    for (int i = 0; i < BUTTON_COUNT; i++) {
-        if (menu->buttons[i].normal) SDL_DestroyTexture(menu->buttons[i].normal);
-        if (menu->buttons[i].hover)  SDL_DestroyTexture(menu->buttons[i].hover);
+        if (menu->frames[i])
+            SDL_DestroyTexture(menu->frames[i]);
+
+    for (int i = 0; i < BUTTON_COUNT; i++)
+    {
+        if (menu->buttons[i].normal)
+            SDL_DestroyTexture(menu->buttons[i].normal);
+        if (menu->buttons[i].hover)
+            SDL_DestroyTexture(menu->buttons[i].hover);
     }
-    if (menu->textShadow)   SDL_DestroyTexture(menu->textShadow);
-    if (menu->textOfGotham) SDL_DestroyTexture(menu->textOfGotham);
-    if (menu->font)         TTF_CloseFont(menu->font);
-    if (menu->clickSound)   Mix_FreeChunk(menu->clickSound);
-    if (menu->music)        Mix_FreeMusic(menu->music);
+
+    if (menu->clickSound) Mix_FreeChunk(menu->clickSound);
+    if (menu->music) Mix_FreeMusic(menu->music);
+
     SDL_DestroyRenderer(menu->renderer);
     SDL_DestroyWindow(menu->window);
-    Mix_CloseAudio(); Mix_Quit(); IMG_Quit(); TTF_Quit(); SDL_Quit();
+
+    Mix_CloseAudio();
+    IMG_Quit();
+    TTF_Quit();
+    SDL_Quit();
 }
+
+/* ================= LOAD BUTTONS ================= */
+void loadButtons(Menu *menu)
+{
+    const char *normalPaths[BUTTON_COUNT] = {
+        "assets/image/bouton play.png",
+        "assets/image/bouton option.png",
+        "assets/image/bouton score.png",
+        "assets/image/bouton history.png",
+        "assets/image/bouton quitter.png"
+    };
+    const char *hoverPaths[BUTTON_COUNT] = {
+        "assets/image/bouton play 1.png",
+        "assets/image/bouton option 1.png",
+        "assets/image/bouton score 1.png",
+        "assets/image/bouton history 1.png",
+        "assets/image/bouton quitter 1.png"
+    };
+
+    int W, H;
+    SDL_GetRendererOutputSize(menu->renderer, &W, &H);
+
+    int bW     = W * 28 / 100;   /* largeur bouton — plus large comme image cible */
+    int bH     = H * 12 / 100;   /* hauteur bouton — plus haute */
+    int bX     = W * 50 / 100;   /* centré-droite, bX = centre - bW/2 + décalage */
+    int startY = H * 25 / 100;   /* commence à 25% du haut */
+    int gap    = H * 12 / 100;   /* espacement vertical égal à bH */
+
+    /* Centrer le bloc de boutons horizontalement dans la moitié droite */
+    bX = W * 52 / 100;
+
+    for (int i = 0; i < BUTTON_COUNT; i++) {
+        menu->buttons[i].normal = loadTextureMenu(menu, normalPaths[i]);
+        menu->buttons[i].hover  = loadTextureMenu(menu, hoverPaths[i]);
+        menu->buttons[i].rect   = (SDL_Rect){ bX, startY + i * gap, bW, bH };
+        menu->buttons[i].state  = 0;  /* 0 = normal, pas hover par défaut */
+    }
+}
+
+/* ================= LOAD BUTTONS ================= */
