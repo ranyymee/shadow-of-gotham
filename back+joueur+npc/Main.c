@@ -12,6 +12,11 @@
 #include "menu.h"
 #include "npc.h"
 #include "minimap.h"
+#include "enigme.h"
+
+/* ── Variables globales exigées par enigme.c ── */
+int SCR_W = 900;
+int SCR_H = 620;
 
 #define JOUEUR_H            300
 #define JOUEUR_W            100
@@ -635,6 +640,16 @@ int main(int argc, char *argv[])
     int           worldH            = 0;
     char          minimapPath[64];
 
+    /* ── Système d'énigmes ── */
+    Enigme        enigme;
+    int           enigmeActive    = 0;   /* 1 = interface d'énigme affichée */
+    int           enigmeDeclenche = 0;   /* garde-fou : déjà déclenché une fois */
+    Uint32        enigmeStartTick = 0;
+    SDL_Texture  *enigmeObjTex   = NULL; /* texture enigme.png dans le monde */
+    SDL_Rect      enigmeObjRect  = { 600, 0, 80, 80 }; /* pos monde, Y fixé après groundEcran */
+    int           enigmeObjActive = 1;   /* 1 = pas encore résolu/détruit */
+    memset(&enigme, 0, sizeof(Enigme));
+
     srand(time(NULL));
 
     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_AUDIO) != 0) {
@@ -704,9 +719,21 @@ int main(int argc, char *argv[])
     bg.camera_pos.h = screenH;
 
     groundEcran = (float)(screenH - JOUEUR_H - 20);
+
+    /* ── Placer l'objet énigme dans le monde ── */
+    enigmeObjRect.x = 600;
+    enigmeObjRect.y = (int)groundEcran - enigmeObjRect.h + JOUEUR_H;
+    enigmeObjTex = IMG_LoadTexture(renderer, "assets/enigme.png");
+    if (!enigmeObjTex) enigmeObjTex = IMG_LoadTexture(renderer, "enigme.png");
+    if (!enigmeObjTex) printf("[enigme] enigme.png non trouve — rectangle jaune utilise\n");
+
+    /* ── Synchroniser SCR_W/SCR_H et initialiser le quiz ── */
+    SCR_W = screenW;
+    SCR_H = screenH;
+    initEnigme(&enigme, renderer);
+
     initPlayer(&p1, 150.0f, groundEcran, 0);
     initPlayer(&p2, (float)(screenW - 250), groundEcran, 1);
-    p1.w = JOUEUR_W; p1.h = JOUEUR_H;
     p2.w = JOUEUR_W; p2.h = JOUEUR_H;
     p1.canDoubleJump = 1;
     p2.canDoubleJump = 1;
@@ -750,11 +777,21 @@ int main(int argc, char *argv[])
 
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_QUIT) { running = 0; break; }
+
+                /* ── Si l'énigme est active, elle capture tous les events ── */
+                if (enigmeActive) {
+                    if (event.type == SDL_KEYDOWN &&
+                        event.key.keysym.sym == SDLK_ESCAPE) {
+                        enigmeActive = 0; /* ESC = fermer sans pénalité */
+                    } else {
+                        handleEnigmeEvent(&enigme, &event);
+                    }
+                    continue; /* ne pas propager au jeu */
+                }
+
                 if (event.type == SDL_KEYDOWN) {
                     SDL_Keycode sym = event.key.keysym.sym;
                     if (sym == SDLK_ESCAPE) { running = 0; break; }
-
-                    /* P = toggle split-screen */
                     if (sym == SDLK_p) {
                         if (!splitScreen) {
                             /* Normal -> Split : p.x etait relative a bg.camera_pos.x
@@ -830,6 +867,33 @@ int main(int argc, char *argv[])
 
             if (shootCdP1 > 0) shootCdP1--;
             if (shootCdP2 > 0) shootCdP2--;
+
+            /* ── Geler le jeu pendant l'énigme ── */
+            if (enigmeActive) {
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderClear(renderer);
+                /* Re-dessiner le fond figé + l'interface énigme */
+                afficherBackgroundEtElements(renderer, &bg, platforms, taille,
+                                             font, dummyColor, timeLeft,
+                                             (p1.vies > p2.vies) ? p1.vies : p2.vies,
+                                             bgX + shake.offsetX, bgY + shake.offsetY,
+                                             screenW, screenH, MODE_MONO);
+                NPC_draw(&gameNPC, bg.camera_pos.x, bg.camera_pos.y);
+                blitPlayer(renderer, &p1);
+                blitPlayer(renderer, &p2);
+                updateEnigme(&enigme);
+                renderEnigme(&enigme, renderer, font, font, font);
+                if (enigme.questionIndex >= NB_QUESTIONS) {
+                    enigmeActive    = 0;
+                    enigmeObjActive = 0;
+                    p1.score += enigme.score * 50;
+                    printf("[enigme] Quiz terminé ! score=%d bonus=%d pts\n",
+                           enigme.score, enigme.score * 50);
+                }
+                SDL_RenderPresent(renderer);
+                SDL_Delay(16);
+                continue;
+            }
 
             const Uint8 *keys = SDL_GetKeyboardState(NULL);
             if (p1.isAlive) handlePlayerInput(&p1, keys, &cfg1, groundEcran);
@@ -973,6 +1037,26 @@ int main(int argc, char *argv[])
             /* update shake animation */
             updateShake(&shake);
 
+            /* ── Détection collision joueur ↔ objet énigme ── */
+            if (enigmeObjActive && !enigmeActive) {
+                SDL_Rect p1screenRect = { (int)p1.x, (int)p1.y, p1.w, p1.h };
+                /* Convertir position monde → écran */
+                SDL_Rect enigmeScreen = {
+                    enigmeObjRect.x - bg.camera_pos.x,
+                    enigmeObjRect.y - (int)bg.camera_pos.y,
+                    enigmeObjRect.w, enigmeObjRect.h
+                };
+                if (p1.isAlive && SDL_HasIntersection(&p1screenRect, &enigmeScreen)) {
+                    enigmeActive    = 1;
+                    enigmeStartTick = SDL_GetTicks();
+                    /* Réinitialiser le quiz pour cette partie */
+                    freeEnigme(&enigme);
+                    SCR_W = screenW; SCR_H = screenH;
+                    initEnigme(&enigme, renderer);
+                    printf("[enigme] Collision ! Interface enigme declenchee.\n");
+                }
+            }
+
             /* build enemy array for minimap and update dot positions */
             {
                 int ec = 0;
@@ -1003,7 +1087,42 @@ int main(int argc, char *argv[])
 
                 NPC_draw(&gameNPC, bg.camera_pos.x, bg.camera_pos.y);
 
-                blitPlayer(renderer, &p1);
+                /* ── Dessiner l'objet énigme dans le monde ── */
+                if (enigmeObjActive) {
+                    SDL_Rect enigmeScreen = {
+                        enigmeObjRect.x - bg.camera_pos.x,
+                        enigmeObjRect.y - (int)bg.camera_pos.y,
+                        enigmeObjRect.w, enigmeObjRect.h
+                    };
+                    if (enigmeScreen.x + enigmeScreen.w > 0 && enigmeScreen.x < screenW) {
+                        if (enigmeObjTex) {
+                            SDL_RenderCopy(renderer, enigmeObjTex, NULL, &enigmeScreen);
+                        } else {
+                            /* Fallback : rectangle jaune scintillant */
+                            Uint32 tnow = SDL_GetTicks();
+                            Uint8  alpha = (Uint8)(180 + 75 * sinf((float)tnow / 400.0f));
+                            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                            SDL_SetRenderDrawColor(renderer, 255, 220, 0, alpha);
+                            SDL_RenderFillRect(renderer, &enigmeScreen);
+                            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                            SDL_RenderDrawRect(renderer, &enigmeScreen);
+                            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+                        }
+                        /* Texte indicatif "?" au-dessus */
+                        if (font) {
+                            SDL_Color yellow = {255, 220, 0, 255};
+                            SDL_Surface *qs = TTF_RenderUTF8_Blended(font, "?", yellow);
+                            if (qs) {
+                                SDL_Texture *qt = SDL_CreateTextureFromSurface(renderer, qs);
+                                SDL_Rect qd = { enigmeScreen.x + enigmeScreen.w/2 - qs->w/2,
+                                                enigmeScreen.y - qs->h - 4,
+                                                qs->w, qs->h };
+                                SDL_RenderCopy(renderer, qt, NULL, &qd);
+                                SDL_FreeSurface(qs); SDL_DestroyTexture(qt);
+                            }
+                        }
+                    }
+                }
                 blitPlayer(renderer, &p2);
 
                 {
@@ -1328,6 +1447,8 @@ cleanup:
     freeMinimap(minimap);
     freeMinimap(minimapLeft);
     freeMinimap(minimapRight);
+    freeEnigme(&enigme);
+    if (enigmeObjTex) { SDL_DestroyTexture(enigmeObjTex); enigmeObjTex = NULL; }
 
     if (batarang) SDL_DestroyTexture(batarang);
     if (p1.sprite.sheetRight) SDL_DestroyTexture(p1.sprite.sheetRight);

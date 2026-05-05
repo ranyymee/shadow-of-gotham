@@ -1,30 +1,45 @@
 /*
- * mainenigme.c  —  Remplace mainfarah.c dans le projet menu_prin
+ * mainenigme.c  —  Module Enigme/Puzzle pour Shadow Of Gotham
  *
- * Contient :
- *   - initMenu / freeMenu / drawTextCentre  (menu Quiz/Puzzle)
- *   - runGameMenu()  <-- appelé depuis Main.c (STATE_ENIGME)
+ * Expose : int runGameMenu(SDL_Window *window, SDL_Renderer *renderer)
+ * Appelé depuis Main.c (case 3 / STATE_ENIGME = bouton HISTORY)
  *
- * Assets attendus dans  enigme_menu_2/assets/  (copier dans menu_prin/assets/)
+ * Affiche d'abord un MENU DE CHOIX entre :
+ *   [QCM]    → lance le quiz Batman (enigme.c)
+ *   [PUZZLE] → lance le puzzle tactique (puzzle.c)
+ *
+ * Retourne le score final (>=0) ou -1 si l'utilisateur est sorti.
+ *
+ * Assets attendus dans assets/assets/ :
  *   background.png  qcm.png  qcmh.png  puzzlee.png  puzzleh.png
- *   batmfa.ttf  batmfa__.ttf  questions.txt
- *   bat.mp3  suspince.mp3  correct.mp3  ghalet.mp3
- *   puzzle1.png  puzzle2.png  puzzle3.png  puzzle.png
- *   carte.png  BatLogo.png
+ *   batmfa.ttf  batmfa__.ttf  (ou font/font.ttf en secours)
+ *   questions.txt  puzzle.png  puzzle1.png  puzzle2.png  puzzle3.png
  */
 
-#include "enigme.h"
-#include "puzzle.h"
+#include "enigme.h"   /* Enigme, initEnigme, renderEnigme, handleEnigmeEvent,
+                         updateEnigme, freeEnigme, NB_QUESTIONS, SCR_W, SCR_H */
+#include "puzzle.h"   /* ContextPuzzle, CartePuzzle, MenuPrincipal,
+                         runMenuPuzzle, runPuzzle, initContextPuzzle,
+                         freeContextPuzzle */
+#include <string.h>
 #include <stdio.h>
 
-/* ============================================================
-   Fonctions du menu Quiz / Puzzle
-   ============================================================ */
+/* ══════════════════════════════════════════════════════════════════
+   ÉTATS INTERNES (enum local, sans conflit avec GameState de game.h)
+   ══════════════════════════════════════════════════════════════════ */
+typedef enum {
+    ES_MENU  = 0,   /* Écran de choix Quiz / Puzzle  */
+    ES_QUIZ  = 1,   /* Quiz QCM en cours             */
+    ES_SCORE = 2    /* Écran résultat final           */
+} EState;
+
+/* ══════════════════════════════════════════════════════════════════
+   FONCTIONS DU MENU DE CHOIX
+   ══════════════════════════════════════════════════════════════════ */
 
 static void initMenuPrinc(MenuPrincipal *m, SDL_Renderer *r, int scrW, int scrH)
 {
     SDL_Surface *s;
-    int bW, bH, gap, bY;
 
     s = IMG_Load("assets/assets/background.png");
     m->bgTexture = s ? SDL_CreateTextureFromSurface(r, s) : NULL;
@@ -47,10 +62,12 @@ static void initMenuPrinc(MenuPrincipal *m, SDL_Renderer *r, int scrW, int scrH)
     if (s) SDL_FreeSurface(s);
 
     m->hoverQuiz = m->hoverPuzzle = 0;
-    bW = scrW * 25 / 100;
-    bH = bW   * 50 / 100;
-    gap = scrW *  8 / 100;
-    bY  = scrH * 46 / 100;
+
+    /* Boutons centrés sur l'écran */
+    int bW  = scrW * 25 / 100;
+    int bH  = bW   * 50 / 100;
+    int gap = scrW *  8 / 100;
+    int bY  = scrH * 46 / 100;
     m->quizRect   = (SDL_Rect){ scrW/2 - bW - gap/2, bY, bW, bH };
     m->puzzleRect = (SDL_Rect){ scrW/2 + gap/2,       bY, bW, bH };
 }
@@ -64,39 +81,39 @@ static void freeMenuPrinc(MenuPrincipal *m)
     if (m->puzzleHoverTex) { SDL_DestroyTexture(m->puzzleHoverTex); m->puzzleHoverTex = NULL; }
 }
 
-static void drawTextCentre(SDL_Renderer *r, TTF_Font *font,
-                            const char *txt, SDL_Color col, int scrW, int y)
+/* Texte centré horizontalement */
+static void drawTextCX(SDL_Renderer *r, TTF_Font *f,
+                       const char *txt, SDL_Color col, int scrW, int y)
 {
-    SDL_Surface *s = TTF_RenderUTF8_Blended(font, txt, col);
+    if (!f || !txt) return;
+    SDL_Surface *s = TTF_RenderUTF8_Blended(f, txt, col);
     if (!s) return;
     SDL_Texture *t = SDL_CreateTextureFromSurface(r, s);
-    SDL_Rect rc = { scrW/2 - s->w/2, y, s->w, s->h };
-    if (t) { SDL_RenderCopy(r, t, NULL, &rc); SDL_DestroyTexture(t); }
+    if (t) {
+        SDL_Rect rc = { scrW/2 - s->w/2, y, s->w, s->h };
+        SDL_RenderCopy(r, t, NULL, &rc);
+        SDL_DestroyTexture(t);
+    }
     SDL_FreeSurface(s);
 }
 
-/* ============================================================
-   renderScore  —  écran de résultats final
-   ============================================================ */
-static void renderScore(SDL_Renderer *renderer, TTF_Font *font,
-                        TTF_Font *fontSmall, Enigme *e,
-                        SDL_Texture *bg, int scrW, int scrH)
+/* ══════════════════════════════════════════════════════════════════
+   ÉCRAN DE RÉSULTAT QUIZ
+   ══════════════════════════════════════════════════════════════════ */
+static void renderScore(SDL_Renderer *renderer,
+                        TTF_Font *font, TTF_Font *fontSmall,
+                        Enigme *e, SDL_Texture *bg, int scrW, int scrH)
 {
-    int step = scrH / 12;
-    char msg[80];
-    const char *perf;
-    SDL_Color cp;
-    SDL_Color yellow = {255,220,0,255}, white = {255,255,255,255}, cyan = {0,200,255,255};
-
     if (bg) SDL_RenderCopy(renderer, bg, NULL, NULL);
 
-    int bW = scrW*44/100, bH = scrH*50/100;
+    int bW = scrW * 44 / 100, bH = scrH * 50 / 100;
     SDL_Rect box = { scrW/2 - bW/2, scrH/2 - bH/2, bW, bH };
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 220);
     SDL_RenderFillRect(renderer, &box);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+
     SDL_SetRenderDrawColor(renderer, 255, 200, 0, 255);
     SDL_Rect fr = box;
     for (int i = 0; i < 3; i++) {
@@ -104,201 +121,258 @@ static void renderScore(SDL_Renderer *renderer, TTF_Font *font,
         fr.x++; fr.y++; fr.w -= 2; fr.h -= 2;
     }
 
-    drawTextCentre(renderer, font,      "= FINAL RESULTS =",       yellow, scrW, scrH/2 - step*2);
-    snprintf(msg, sizeof(msg), "Score: %d / %d", e->score, NB_QUESTIONS);
-    drawTextCentre(renderer, fontSmall, msg,                        white,  scrW, scrH/2 - step);
-    snprintf(msg, sizeof(msg), "Level reached: %d", e->niveau);
-    drawTextCentre(renderer, fontSmall, msg,                        cyan,   scrW, scrH/2);
+    int step = scrH / 12;
+    SDL_Color yellow = {255, 220,   0, 255};
+    SDL_Color white  = {255, 255, 255, 255};
+    SDL_Color cyan   = {  0, 200, 255, 255};
+    char msg[80];
 
+    drawTextCX(renderer, font, "= FINAL RESULTS =", yellow, scrW, scrH/2 - step*2);
+
+    snprintf(msg, sizeof(msg), "Score: %d / %d", e->score, NB_QUESTIONS);
+    drawTextCX(renderer, fontSmall, msg, white, scrW, scrH/2 - step);
+
+    snprintf(msg, sizeof(msg), "Level: %d", e->niveau);
+    drawTextCX(renderer, fontSmall, msg, cyan, scrW, scrH/2);
+
+    const char *perf; SDL_Color cp;
     if      (e->score == NB_QUESTIONS)              { perf = "Perfect! True Batman expert!"; cp = (SDL_Color){0,255,0,255};   }
     else if (e->score >= NB_QUESTIONS * 7 / 10)     { perf = "Excellent! Well played!";      cp = (SDL_Color){0,220,100,255}; }
     else if (e->score >= NB_QUESTIONS / 2)           { perf = "Good job! Keep it up!";        cp = (SDL_Color){255,200,0,255}; }
     else                                             { perf = "Keep practicing!";              cp = (SDL_Color){255,80,80,255}; }
-
-    drawTextCentre(renderer, fontSmall, perf,                       cp,     scrW, scrH/2 + step);
-    drawTextCentre(renderer, fontSmall, "Press ENTER to play again",white,  scrW, scrH/2 + step*2);
+    drawTextCX(renderer, fontSmall, perf,                        cp,    scrW, scrH/2 + step);
+    drawTextCX(renderer, fontSmall, "Press ENTER to continue",   white, scrW, scrH/2 + step*2);
 }
 
-/* ============================================================
-   runGameMenu  —  Point d'entrée appelé depuis Main.c
-                   (remplace l'ancien bloc STATE_ENIGME)
-   ============================================================ */
+/* ══════════════════════════════════════════════════════════════════
+   RENDU DU MENU DE CHOIX
+   ══════════════════════════════════════════════════════════════════ */
+static void renderMenuChoix(MenuPrincipal *m, SDL_Renderer *r,
+                            TTF_Font *fontTitle, int scrW, int scrH)
+{
+    /* Fond */
+    if (m->bgTexture)
+        SDL_RenderCopy(r, m->bgTexture, NULL, NULL);
+
+    /* Panneau semi-transparent */
+    int rW = scrW * 72 / 100, rH = scrH * 59 / 100, rY = scrH * 17 / 100;
+    SDL_Rect box = { scrW/2 - rW/2, rY, rW, rH };
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(r, 255, 255, 255, 58);
+    SDL_RenderFillRect(r, &box);
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+
+    /* Titre */
+    SDL_Color white = {255, 255, 255, 255};
+    if (fontTitle)
+        drawTextCX(r, fontTitle, "ENIGME", white, scrW, scrH * 26 / 100);
+
+    /* Glow sous bouton quiz survolé */
+    if (m->hoverQuiz) {
+        SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+        SDL_Rect *b = &m->quizRect;
+        for (int i = 0; i < 8; i++) {
+            int gW = b->w * (80 - i * 8) / 100;
+            SDL_Rect gr = { b->x + (b->w - gW)/2, b->y + b->h + i*3, gW, 4 };
+            SDL_SetRenderDrawColor(r, 255, 210, 80, (Uint8)(30 - i*3));
+            SDL_RenderFillRect(r, &gr);
+        }
+        SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+    }
+    /* Glow sous bouton puzzle survolé */
+    if (m->hoverPuzzle) {
+        SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+        SDL_Rect *b = &m->puzzleRect;
+        for (int i = 0; i < 8; i++) {
+            int gW = b->w * (80 - i * 8) / 100;
+            SDL_Rect gr = { b->x + (b->w - gW)/2, b->y + b->h + i*3, gW, 4 };
+            SDL_SetRenderDrawColor(r, 255, 210, 80, (Uint8)(30 - i*3));
+            SDL_RenderFillRect(r, &gr);
+        }
+        SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+    }
+
+    /* Boutons */
+    SDL_Texture *qt = (m->hoverQuiz   && m->quizHoverTex)   ? m->quizHoverTex   : m->quizTex;
+    SDL_Texture *pt = (m->hoverPuzzle && m->puzzleHoverTex) ? m->puzzleHoverTex : m->puzzleTex;
+    if (qt) SDL_RenderCopy(r, qt, NULL, &m->quizRect);
+    if (pt) SDL_RenderCopy(r, pt, NULL, &m->puzzleRect);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   POINT D'ENTRÉE PUBLIC — appelé depuis Main.c (STATE_ENIGME)
+   Retourne le score du quiz (>=0) ou -1 (sorti sans finir)
+   ══════════════════════════════════════════════════════════════════ */
 int runGameMenu(SDL_Window *window, SDL_Renderer *renderer)
 {
     int scrW, scrH;
     SDL_GetRendererOutputSize(renderer, &scrW, &scrH);
 
-    /* --- Polices --- */
-    int fontBigPt   = scrH*38/1080; if (fontBigPt   < 20) fontBigPt   = 20;
-    int fontSmallPt = scrH*20/1080; if (fontSmallPt < 12) fontSmallPt = 12;
-    int fontTinyPt  = scrH*14/1080; if (fontTinyPt  < 10) fontTinyPt  = 10;
-    int fontTitlePt = scrH*90/1080; if (fontTitlePt < 60) fontTitlePt = 60;
+    /* ── Polices ── */
+    int bigPt   = scrH * 38 / 1080; if (bigPt   < 20) bigPt   = 20;
+    int smallPt = scrH * 20 / 1080; if (smallPt < 12) smallPt = 12;
+    int tinyPt  = scrH * 14 / 1080; if (tinyPt  < 10) tinyPt  = 10;
+    int titlePt = scrH * 90 / 1080; if (titlePt < 60) titlePt = 60;
 
-    TTF_Font *font      = TTF_OpenFont("assets/assets/batmfa.ttf",   fontBigPt);
-    TTF_Font *fontSmall = TTF_OpenFont("assets/assets/batmfa.ttf",   fontSmallPt);
-    TTF_Font *fontTiny  = TTF_OpenFont("assets/assets/batmfa.ttf",   fontTinyPt);
-    TTF_Font *fontTitle = TTF_OpenFont("assets/assets/batmfa.ttf",   fontTitlePt);
-    TTF_Font *fntBig    = TTF_OpenFont("assets/assets/batmfa__.ttf", 42);
-    TTF_Font *fntMid    = TTF_OpenFont("assets/assets/batmfa__.ttf", 28);
-    TTF_Font *fntSm     = TTF_OpenFont("assets/assets/batmfa__.ttf", 19);
-    TTF_Font *fntTiny   = TTF_OpenFont("assets/assets/batmfa__.ttf", 16);
+    /* Police principale du quiz (batmfa) */
+    const char *pA  = "assets/assets/batmfa.ttf";
+    const char *pB  = "assets/assets/batmfa__.ttf";
+    const char *pFB = "assets/assets/font/font.ttf";  /* secours */
 
-    /* Polices de secours si les fichiers batmfa__.ttf manquent */
-    if (!fntBig)  fntBig  = TTF_OpenFont("assets/assets/font/font.ttf", 42);
-    if (!fntMid)  fntMid  = TTF_OpenFont("assets/assets/font/font.ttf", 28);
-    if (!fntSm)   fntSm   = TTF_OpenFont("assets/assets/font/font.ttf", 19);
-    if (!fntTiny) fntTiny = TTF_OpenFont("assets/assets/font/font.ttf", 16);
-    if (!font)    font     = TTF_OpenFont("assets/assets/font/font.ttf", fontBigPt);
-    if (!fontSmall) fontSmall = TTF_OpenFont("assets/assets/font/font.ttf", fontSmallPt);
-    if (!fontTiny)  fontTiny  = TTF_OpenFont("assets/assets/font/font.ttf", fontTinyPt);
-    if (!fontTitle) fontTitle = TTF_OpenFont("assets/assets/font/font.ttf", fontTitlePt);
+    TTF_Font *font      = TTF_OpenFont(pA, bigPt);
+    TTF_Font *fontSmall = TTF_OpenFont(pA, smallPt);
+    TTF_Font *fontTiny  = TTF_OpenFont(pA, tinyPt);
+    TTF_Font *fontTitle = TTF_OpenFont(pA, titlePt);
+    if (!font)      font      = TTF_OpenFont(pFB, bigPt);
+    if (!fontSmall) fontSmall = TTF_OpenFont(pFB, smallPt);
+    if (!fontTiny)  fontTiny  = TTF_OpenFont(pFB, tinyPt);
+    if (!fontTitle) fontTitle = TTF_OpenFont(pFB, titlePt);
 
-    if (!font || !fontSmall || !fontTiny || !fontTitle ||
-        !fntBig || !fntMid || !fntSm || !fntTiny) {
-        fprintf(stderr, "[ENIGME] Erreur chargement polices: %s\n", TTF_GetError());
-        /* on continue sans planter le jeu principal */
+    /* Polices pour le moteur puzzle */
+    TTF_Font *fntBig  = TTF_OpenFont(pB, 42); if (!fntBig)  fntBig  = TTF_OpenFont(pFB, 42);
+    TTF_Font *fntMid  = TTF_OpenFont(pB, 28); if (!fntMid)  fntMid  = TTF_OpenFont(pFB, 28);
+    TTF_Font *fntSm   = TTF_OpenFont(pB, 19); if (!fntSm)   fntSm   = TTF_OpenFont(pFB, 19);
+    TTF_Font *fntTiny = TTF_OpenFont(pB, 16); if (!fntTiny) fntTiny = TTF_OpenFont(pFB, 16);
+
+    if (!font || !fontSmall || !fontTiny || !fontTitle) {
+        fprintf(stderr, "[ENIGME] Polices introuvables: %s\n", TTF_GetError());
+        /* On continue quand même pour ne pas bloquer le jeu principal */
     }
 
-    /* --- Structures --- */
-    MenuPrincipal menu;
+    /* ── Structures ── */
+    MenuPrincipal menuChoix;
     Enigme        enigme;
     ContextPuzzle ctx;
 
-    initMenuPrinc(&menu, renderer, scrW, scrH);
+    initMenuPrinc(&menuChoix, renderer, scrW, scrH);
     initEnigme(&enigme, renderer, scrW, scrH);
+
+    /* Initialiser le contexte puzzle seulement si les polices sont dispo */
     if (fntBig && fntMid && fntSm && fntTiny)
         initContextPuzzle(&ctx, renderer, fntBig, fntMid, fntSm, fntTiny);
     else
-        memset(&ctx, 0, sizeof(ctx));
+        memset(&ctx, 0, sizeof(ctx));   /* puzzle désactivé, pas de crash */
 
-    int state   = STATE_MENU;
-    int running = 1;
-    SDL_Event event;
+    /* ── Boucle principale ── */
+    EState state      = ES_MENU;   /* ← IMPORTANT : commence sur le MENU de choix */
+    int    running    = 1;
+    int    finalScore = -1;
+    SDL_Event ev;
 
     while (running)
     {
-        while (SDL_PollEvent(&event))
+        /* ── Événements ── */
+        while (SDL_PollEvent(&ev))
         {
-            if (event.type == SDL_QUIT) { running = 0; break; }
+            if (ev.type == SDL_QUIT) { running = 0; break; }
 
-            /* ESC → retour au menu principal du jeu */
-            if (event.type == SDL_KEYDOWN && !event.key.repeat &&
-                event.key.keysym.sym == SDLK_ESCAPE) { running = 0; break; }
-
-            /* Resize */
-            if (event.type == SDL_WINDOWEVENT &&
-                event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                SDL_GetRendererOutputSize(renderer, &scrW, &scrH);
-                freeEnigme(&enigme); initEnigme(&enigme, renderer, scrW, scrH);
-                freeMenuPrinc(&menu); initMenuPrinc(&menu, renderer, scrW, scrH);
-            }
-
-            /* ---- MENU SELECTION ---- */
-            if (state == STATE_MENU) {
-                if (event.type == SDL_MOUSEMOTION) {
-                    int mx = event.motion.x, my = event.motion.y;
-                    menu.hoverQuiz   = (mx >= menu.quizRect.x   && mx < menu.quizRect.x   + menu.quizRect.w   &&
-                                        my >= menu.quizRect.y   && my < menu.quizRect.y   + menu.quizRect.h);
-                    menu.hoverPuzzle = (mx >= menu.puzzleRect.x && mx < menu.puzzleRect.x + menu.puzzleRect.w &&
-                                        my >= menu.puzzleRect.y && my < menu.puzzleRect.y + menu.puzzleRect.h);
-                }
-                if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
-                    int mx = event.button.x, my = event.button.y;
-                    /* Bouton QUIZ */
-                    if (mx >= menu.quizRect.x && mx < menu.quizRect.x + menu.quizRect.w &&
-                        my >= menu.quizRect.y && my < menu.quizRect.y + menu.quizRect.h) {
+            if (ev.type == SDL_KEYDOWN && !ev.key.repeat) {
+                if (ev.key.keysym.sym == SDLK_ESCAPE) {
+                    if (state == ES_MENU) {
+                        running = 0;          /* ESC sur menu choix → retour jeu */
+                    } else {
+                        /* ESC pendant quiz → retour menu choix */
                         freeEnigme(&enigme);
                         initEnigme(&enigme, renderer, scrW, scrH);
-                        state = STATE_QUIZ;
+                        state = ES_MENU;
                     }
-                    /* Bouton PUZZLE */
-                    else if (mx >= menu.puzzleRect.x && mx < menu.puzzleRect.x + menu.puzzleRect.w &&
-                             my >= menu.puzzleRect.y && my < menu.puzzleRect.y + menu.puzzleRect.h) {
+                    break;
+                }
+                /* ENTRÉE sur écran score → sortir et retourner le score */
+                if (ev.key.keysym.sym == SDLK_RETURN && state == ES_SCORE) {
+                    finalScore = enigme.score;
+                    running = 0;
+                }
+            }
+
+            /* Resize fenêtre */
+            if (ev.type == SDL_WINDOWEVENT &&
+                ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                SDL_GetRendererOutputSize(renderer, &scrW, &scrH);
+                freeEnigme(&enigme);
+                initEnigme(&enigme, renderer, scrW, scrH);
+                freeMenuPrinc(&menuChoix);
+                initMenuPrinc(&menuChoix, renderer, scrW, scrH);
+            }
+
+            /* ── Menu de choix ── */
+            if (state == ES_MENU) {
+                if (ev.type == SDL_MOUSEMOTION) {
+                    int mx = ev.motion.x, my = ev.motion.y;
+                    SDL_Rect *qr = &menuChoix.quizRect;
+                    SDL_Rect *pr = &menuChoix.puzzleRect;
+                    menuChoix.hoverQuiz   = (mx >= qr->x && mx < qr->x+qr->w &&
+                                             my >= qr->y && my < qr->y+qr->h);
+                    menuChoix.hoverPuzzle = (mx >= pr->x && mx < pr->x+pr->w &&
+                                             my >= pr->y && my < pr->y+pr->h);
+                }
+                if (ev.type == SDL_MOUSEBUTTONDOWN && ev.button.button == SDL_BUTTON_LEFT) {
+                    int mx = ev.button.x, my = ev.button.y;
+                    SDL_Rect *qr = &menuChoix.quizRect;
+                    SDL_Rect *pr = &menuChoix.puzzleRect;
+
+                    /* Clic sur QCM → lancer le quiz */
+                    if (mx >= qr->x && mx < qr->x+qr->w &&
+                        my >= qr->y && my < qr->y+qr->h) {
+                        freeEnigme(&enigme);
+                        initEnigme(&enigme, renderer, scrW, scrH);
+                        state = ES_QUIZ;
+                    }
+                    /* Clic sur PUZZLE → lancer le puzzle */
+                    else if (mx >= pr->x && mx < pr->x+pr->w &&
+                             my >= pr->y && my < pr->y+pr->h) {
                         if (ctx.ren) {
                             int choice = runMenuPuzzle(window, &ctx);
                             if (choice >= 0) runPuzzle(window, &ctx, choice);
-                            SDL_RenderSetLogicalSize(renderer, 0, 0);
                             SDL_RenderSetViewport(renderer, NULL);
+                        } else {
+                            fprintf(stderr, "[ENIGME] Puzzle désactivé (polices manquantes)\n");
                         }
                     }
                 }
             }
-            /* ---- QUIZ ---- */
-            else if (state == STATE_QUIZ) {
-                handleEnigmeEvent(&enigme, &event);
+            /* ── Quiz en cours ── */
+            else if (state == ES_QUIZ) {
+                handleEnigmeEvent(&enigme, &ev);
             }
         }
 
-        /* Update */
-        if (state == STATE_QUIZ) {
+        /* ── Mise à jour ── */
+        if (state == ES_QUIZ) {
             updateEnigme(&enigme);
             if (enigme.questionIndex >= NB_QUESTIONS) {
-                state = STATE_SCORE;
-                /* Afficher l'écran de score final une dernière fois
-                   avant de passer à scoreMenuLoop */
-                SDL_SetRenderDrawColor(renderer, 10, 10, 20, 255);
-                SDL_RenderClear(renderer);
-                if (font && fontSmall)
-                    renderScore(renderer, font, fontSmall, &enigme,
-                                menu.bgTexture, scrW, scrH);
-                SDL_RenderPresent(renderer);
-                SDL_Delay(1500);   /* pause 1.5s pour que le joueur voit son score */
-                running = 0;       /* sortir proprement vers scoreMenuLoop */
+                /* Quiz terminé → afficher résultat */
+                finalScore = enigme.score;
+                state = ES_SCORE;
             }
         }
 
-        /* Render */
+        /* ── Rendu ── */
         SDL_SetRenderDrawColor(renderer, 10, 10, 20, 255);
         SDL_RenderClear(renderer);
 
-        if (state == STATE_MENU) {
-            int rW = scrW*72/100, rH = scrH*59/100, rY = scrH*17/100;
-            SDL_Rect box = { scrW/2 - rW/2, rY, rW, rH };
-            SDL_Color white = {255,255,255,255};
-
-            if (menu.bgTexture) SDL_RenderCopy(renderer, menu.bgTexture, NULL, NULL);
-
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 58);
-            SDL_RenderFillRect(renderer, &box);
-            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-
-            if (fontTitle)
-                drawTextCentre(renderer, fontTitle, "ENIGME", white, scrW, scrH*26/100);
-
-            /* Glow sous bouton quiz survolé */
-            if (menu.hoverQuiz) {
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-                SDL_Rect *b = &menu.quizRect;
-                for (int i = 0; i < 8; i++) {
-                    int gW = b->w*(80-i*8)/100;
-                    SDL_Rect gr = { b->x + (b->w - gW)/2, b->y + b->h + i*3, gW, 4 };
-                    SDL_SetRenderDrawColor(renderer, 255, 210, 80, (Uint8)(30 - i*3));
-                    SDL_RenderFillRect(renderer, &gr);
-                }
-                SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-            }
-
-            SDL_Texture *qt = (menu.hoverQuiz   && menu.quizHoverTex)   ? menu.quizHoverTex   : menu.quizTex;
-            SDL_Texture *pt = (menu.hoverPuzzle && menu.puzzleHoverTex) ? menu.puzzleHoverTex : menu.puzzleTex;
-            if (qt) SDL_RenderCopy(renderer, qt, NULL, &menu.quizRect);
-            if (pt) SDL_RenderCopy(renderer, pt, NULL, &menu.puzzleRect);
-        }
-        else if (state == STATE_QUIZ) {
-            if (font && fontSmall && fontTiny)
-                renderEnigme(&enigme, renderer, font, fontSmall, fontTiny);
+        switch (state) {
+            case ES_MENU:
+                renderMenuChoix(&menuChoix, renderer, fontTitle, scrW, scrH);
+                break;
+            case ES_QUIZ:
+                if (font && fontSmall && fontTiny)
+                    renderEnigme(&enigme, renderer, font, fontSmall, fontTiny);
+                break;
+            case ES_SCORE:
+                if (font && fontSmall)
+                    renderScore(renderer, font, fontSmall, &enigme,
+                                menuChoix.bgTexture, scrW, scrH);
+                break;
         }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
 
-    /* Sauvegarder le score avant de libérer la structure */
-    int final_enigme_score = enigme.score;
-
-    /* Nettoyage */
+    /* ── Nettoyage ── */
     freeEnigme(&enigme);
-    freeMenuPrinc(&menu);
+    freeMenuPrinc(&menuChoix);
     if (ctx.ren) freeContextPuzzle(&ctx);
 
     if (font)      TTF_CloseFont(font);
@@ -310,8 +384,5 @@ int runGameMenu(SDL_Window *window, SDL_Renderer *renderer)
     if (fntSm)     TTF_CloseFont(fntSm);
     if (fntTiny)   TTF_CloseFont(fntTiny);
 
-    /* Retourner -1 si on a quitté sans finir le quiz,
-       sinon le score réel (peut être 0, donc on utilise
-       state pour distinguer) */
-    return (state == STATE_SCORE) ? final_enigme_score : -1;
+    return finalScore;
 }

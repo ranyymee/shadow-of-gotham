@@ -21,8 +21,6 @@
 #define MAX_FRAMES    50
 #endif
 
-<<<<<<< HEAD
-=======
 /* ==================== GAME STATE (Main.c) ==================== */
 typedef enum {
     STATE_MENU,
@@ -34,68 +32,50 @@ typedef enum {
     STATE_QUIT
 } GameState;
 
->>>>>>> 75f7f12 (add bck folder)
-/* ==================== MENU PRINCIPAL ==================== */
-typedef enum {
-    PLAY,
-    OPTIONS,
-    PLAYERS,
-    SCORES,
-    HISTORY,
-    QUITTER
-} Action;
-
+/* ==================== BOUTON DU MENU PRINCIPAL ==================== */
 typedef struct {
-    SDL_Texture *normal;
-    SDL_Texture *hover;
+    SDL_Texture *texture;   /* normal (pas hover)  */
+    SDL_Texture *hoverTx;   /* version hover       */
     SDL_Rect     rect;
-    int          state;
+    int          state;     /* 0=normal, 1=hovered */
+    char         label[32]; /* nom du bouton       */
 } Button;
 
+/* ==================== MENU PRINCIPAL ==================== */
 typedef struct {
     SDL_Window   *window;
     SDL_Renderer *renderer;
+    int           winW, winH;   /* dimensions réelles */
 
-    SDL_Texture *frames[FRAME_COUNT];
+    SDL_Texture *bgFrames[FRAME_COUNT];
     int          currentFrame;
-<<<<<<< HEAD
-=======
     int          bgDirection;
->>>>>>> 75f7f12 (add bck folder)
 
     Button buttons[BUTTON_COUNT];
 
-    SDL_Texture *logo;
-    SDL_Rect     logoRect;
+    SDL_Texture *logoTexture;  /* logo.png (optionnel) */
+    TTF_Font    *font;
 
-    SDL_Texture *textShadow;
-    SDL_Rect     textShadowRect;
-
-    SDL_Texture *textOfGotham;
-    SDL_Rect     textOfGothamRect;
-
-    TTF_Font  *font;
-    Mix_Chunk *clickSound;
-    Mix_Music *music;
+    Mix_Chunk   *clickSound;
+    Mix_Chunk   *hoverSound;
+    Mix_Music   *music;
 
     bool running;
 } Menu;
 
-/* ScoreMenuState / PlayerScore / ScoreMenu sont définis dans integrated.h.
-   On l'inclut ici pour les rendre disponibles à quiconque inclut game.h. */
+/* integrated.h est inclus ici pour ScoreMenu, ScoreMenuState, PlayerScore */
 #include "integrated.h"
 
-/* ==================== PROTOTYPES MENU PRINCIPAL ==================== */
-int  init        (Menu *menu);
-void loadAssets  (Menu *menu);
-void events      (Menu *menu);
-void render      (Menu *menu);
-void update      (Menu *menu);
-void destroy     (Menu *menu);
-void action      (Menu *menu, Action a);
-void loadButtons (Menu *menu);
+/* ==================== PROTOTYPES ==================== */
+bool init       (Menu *menu);
+void loadAssets (Menu *menu);
+void render     (Menu *menu);
+void update     (Menu *menu);
+void destroy    (Menu *menu);
+void loadButtons(Menu *menu);
+void loadBackground(Menu *menu);
 
-/* ==================== PROTOTYPE loadTexture (enigme.c) ==================== */
+/* loadTexture — défini dans score.c/integrated.c */
 SDL_Texture *loadTexture(const char *path, SDL_Renderer *renderer);
 
 #endif /* GAME_H */

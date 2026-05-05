@@ -40,17 +40,17 @@ static SDL_Texture *loadTex(const char *path, SDL_Renderer *r)
 
 static void initMenu(Menu *m, SDL_Renderer *r)
 {
-    m->bgTexture      = loadTex("background.png", r);
-    m->quizTex        = loadTex("qcm.png",        r);
-    m->quizHoverTex   = loadTex("qcmh.png",       r);
-    m->puzzleTex      = loadTex("puzzlee.png",      r);
-    m->puzzleHoverTex = loadTex("puzzleh.png",     r);
+    m->bgTexture      = loadTex("assets/background.png", r);
+    m->quizTex        = loadTex("assets/qcm.png",        r);
+    m->quizHoverTex   = loadTex("assets/qcmh.png",       r);
+    m->puzzleTex      = loadTex("assets/puzzlee.png",     r);
+    m->puzzleHoverTex = loadTex("assets/puzzleh.png",    r);
     m->hoverQuiz = m->hoverPuzzle = 0;
 
     int bW = SCR_W * 25 / 100;
     int bH = bW * 50 / 100;
     int gap = SCR_W * 8 / 100;
-    int bY  = SCR_H * 46 / 100;   /* closer to ENIGME title */
+    int bY  = SCR_H * 46 / 100;
     m->quizRect   = (SDL_Rect){ SCR_W/2 - bW - gap/2, bY, bW, bH };
     m->puzzleRect = (SDL_Rect){ SCR_W/2 + gap/2,      bY, bW, bH };
 }
@@ -84,7 +84,6 @@ static void renderMenu(Menu *m, SDL_Renderer *r, TTF_Font *fontBig)
 {
     if (m->bgTexture) SDL_RenderCopy(r, m->bgTexture, NULL, NULL);
 
-    /* Semi-transparent white rectangle — moved down */
     int rW = SCR_W * 72 / 100;
     int rH = SCR_H * 59 / 100;
     int rY = SCR_H * 17 / 100;
@@ -94,11 +93,9 @@ static void renderMenu(Menu *m, SDL_Renderer *r, TTF_Font *fontBig)
     SDL_RenderFillRect(r, &box);
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
 
-    /* Title "ENIGME" centered */
     SDL_Color white = {255, 255, 255, 255};
     drawTextCX(r, fontBig, "ENIGME", white, SCR_H * 26 / 100);
 
-    /* Hover glow — original yellow style */
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     if (m->hoverQuiz) {
         SDL_Rect *b = &m->quizRect;
@@ -130,30 +127,6 @@ static void renderMenu(Menu *m, SDL_Renderer *r, TTF_Font *fontBig)
     SDL_Texture *pt = (m->hoverPuzzle && m->puzzleHoverTex) ? m->puzzleHoverTex : m->puzzleTex;
     if (qt) SDL_RenderCopy(r, qt, NULL, &m->quizRect);
     if (pt) SDL_RenderCopy(r, pt, NULL, &m->puzzleRect);
-}
-
-static void renderPuzzle(SDL_Renderer *r, TTF_Font *font, SDL_Texture *bg)
-{
-    if (bg) SDL_RenderCopy(r, bg, NULL, NULL);
-    int bW = SCR_W * 35 / 100, bH = SCR_H * 28 / 100;
-    SDL_Rect box = { SCR_W/2 - bW/2, SCR_H/2 - bH/2, bW, bH };
-    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(r, 0, 0, 0, 210);
-    SDL_RenderFillRect(r, &box);
-    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(r, 255, 200, 0, 255);
-    SDL_Rect fr = box;
-    for (int i = 0; i < 3; i++) {
-        SDL_RenderDrawRect(r, &fr);
-        fr.x++; fr.y++; fr.w -= 2; fr.h -= 2;
-    }
-    SDL_Color yellow = {255,220,0,255};
-    SDL_Color white  = {255,255,255,255};
-    SDL_Color grey   = {200,200,200,255};
-    int lineH = SCR_H / 14;
-    drawTextCX(r, font, "PUZZLE",                      yellow, SCR_H/2 - lineH*2);
-    drawTextCX(r, font, "Module under development...", white,  SCR_H/2 - lineH/2);
-    drawTextCX(r, font, "Press ENTER to go back",      grey,   SCR_H/2 + lineH);
 }
 
 static void renderScore(SDL_Renderer *r, TTF_Font *fontBig, TTF_Font *fontSub,
@@ -205,10 +178,6 @@ int main(void)
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 512) < 0)
         fprintf(stderr, "[WARN] Mix_OpenAudio: %s\n", Mix_GetError());
 
-    /* ── Create window at 1280×720 by default ─────────────
-       The user can resize it; everything scales automatically.
-       To run fullscreen at native res, change SDL_WINDOW_RESIZABLE
-       to SDL_WINDOW_FULLSCREEN_DESKTOP and remove W/H args.     */
     SDL_Window *window = SDL_CreateWindow(
         "Batman Enigma Quiz",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -218,28 +187,24 @@ int main(void)
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
-    /* ── Query actual drawable size ──────────────────────── */
     SDL_GetRendererOutputSize(renderer, &SCR_W, &SCR_H);
     fprintf(stdout, "[INFO] Window size: %d x %d\n", SCR_W, SCR_H);
 
-    /* ── Font sizes: scale with screen height ────────────────
-         Reference: at 720p → big=38, small=20, tiny=14
-                    at 1080p → big=57, small=30, tiny=21       */
     int fontBigPt   = SCR_H * 38 / 720;
     int fontSmallPt = SCR_H * 20 / 720;
     int fontTinyPt  = SCR_H * 14 / 720;
-    int fontTitlePt = SCR_H * 90 / 720;  /* ~90pt at 720p for ENIGME title */
+    int fontTitlePt = SCR_H * 90 / 720;
     if (fontBigPt   < 20)  fontBigPt   = 20;
     if (fontSmallPt < 12)  fontSmallPt = 12;
     if (fontTinyPt  < 10)  fontTinyPt  = 10;
     if (fontTitlePt < 60)  fontTitlePt = 60;
 
-    TTF_Font *font      = TTF_OpenFont("batmfa.ttf", fontBigPt);
-    TTF_Font *fontSmall = TTF_OpenFont("batmfa.ttf", fontSmallPt);
-    TTF_Font *fontTiny  = TTF_OpenFont("batmfa.ttf", fontTinyPt);
-    TTF_Font *fontTitle = TTF_OpenFont("batmfa.ttf", fontTitlePt);
+    TTF_Font *font      = TTF_OpenFont("assets/batmfa.ttf", fontBigPt);
+    TTF_Font *fontSmall = TTF_OpenFont("assets/batmfa.ttf", fontSmallPt);
+    TTF_Font *fontTiny  = TTF_OpenFont("assets/batmfa.ttf", fontTinyPt);
+    TTF_Font *fontTitle = TTF_OpenFont("assets/batmfa.ttf", fontTitlePt);
     if (!font || !fontSmall || !fontTiny || !fontTitle) {
-        fprintf(stderr, "[ERROR] batmfa.ttf: %s\n", TTF_GetError());
+        fprintf(stderr, "[ERROR] assets/batmfa.ttf: %s\n", TTF_GetError());
         return 1;
     }
     fprintf(stdout, "[INFO] Fonts: big=%dpt small=%dpt tiny=%dpt title=%dpt\n",
@@ -260,11 +225,9 @@ int main(void)
             if (event.type == SDL_KEYDOWN &&
                 event.key.keysym.sym == SDLK_ESCAPE) { running=0; break; }
 
-            /* Handle window resize */
             if (event.type == SDL_WINDOWEVENT &&
                 event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                 SDL_GetRendererOutputSize(renderer, &SCR_W, &SCR_H);
-                /* Recompute layout for new size */
                 freeEnigme(&enigme);
                 initEnigme(&enigme, renderer);
                 initMenu(&menu, renderer);
@@ -284,9 +247,8 @@ int main(void)
                         initEnigme(&enigme, renderer);
                         state = STATE_QUIZ;
                     } else if (pointInRect(mx,my,&menu.puzzleRect)) {
-                        /* Launch puzzle module — sets up g_ren/fonts then loops */
                         g_ren = renderer;
-                        const char *bf  = "batmfa__.ttf";
+                        const char *bf  = "assets/batmfa__.ttf";
                         const char *fbo = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
                         const char *fno = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
                         if (!g_fntBig)  { g_fntBig  = TTF_OpenFont(bf,24); if(!g_fntBig)  g_fntBig  = TTF_OpenFont(fbo,22); }
@@ -330,7 +292,6 @@ int main(void)
                 renderEnigme(&enigme, renderer, font, fontSmall, fontTiny);
                 break;
             case STATE_PUZZLE:
-                /* handled inline above — should not reach here */
                 break;
             case STATE_SCORE:
                 renderScore(renderer, font, fontSmall, &enigme, menu.bgTexture);

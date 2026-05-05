@@ -1,25 +1,36 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Makefile — Shadow of Gotham (Batman/Catwoman + Énigmes)
+# ─────────────────────────────────────────────────────────────────────────────
+
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c11 $(shell sdl2-config --cflags)
-LDFLAGS = $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lm
-TARGET  = game
+CFLAGS  = -Wall -Wextra -O2 $(shell sdl2-config --cflags)
+LIBS    = $(shell sdl2-config --libs) -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lm
 
-# Sources du jeu principal (sans mback.c qui a son propre main)
-SRCS    = Main.c player.c menu.c back.c npc.c minimap.c
-OBJS    = $(SRCS:.c=.o)
+# ── Cibles ────────────────────────────────────────────────────────────────────
 
-all: $(TARGET)
+# Jeu principal avec énigmes par collision
+TARGET_JEU   = jeu
+SRC_JEU      = main_jeu.c enigme_trigger.c enigme.c player.c
 
-$(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+# Version mainfarah (menu + quiz + puzzle)  — adaptez si nécessaire
+TARGET_MAIN  = shadow_of_gotham
+SRC_MAIN     = mainfarah.c enigme.c player.c puzzle.c mainpuzzle.c
 
-# Cible optionnelle pour tester le background seul
-mback: $(MBACK_OBJS)
-	$(CC) $(MBACK_OBJS) -o $@ $(LDFLAGS)
+# ── Règles ────────────────────────────────────────────────────────────────────
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+all: $(TARGET_JEU) $(TARGET_MAIN)
+
+$(TARGET_JEU): $(SRC_JEU)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+$(TARGET_MAIN): $(SRC_MAIN)
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+jeu: $(TARGET_JEU)
+
+main: $(TARGET_MAIN)
 
 clean:
-	rm -f $(OBJS) $(MBACK_OBJS) $(TARGET) mback
+	rm -f $(TARGET_JEU) $(TARGET_MAIN) *.o
 
-.PHONY: all clean mback
+.PHONY: all jeu main clean
